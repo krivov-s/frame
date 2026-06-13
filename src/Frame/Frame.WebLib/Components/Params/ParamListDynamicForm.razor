@@ -1,0 +1,140 @@
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+@using Frame.Domain.Params
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+<MudForm @ref="_form" @bind-IsValid="@_success" @bind-Errors="@_errors">
+    <MudCard>
+        <MudCardContent>
+            @if (_paramList != null)
+            {
+                <MudGrid>
+                    @foreach (var keyValueParamPair in _paramList.AsDictionary())
+                    {
+                        if (keyValueParamPair.Value is { IsHidden: false })
+                        {
+                            string oKey = keyValueParamPair.Key;
+                            Type oType = _paramTypes[oKey];
+                            string label = (keyValueParamPair.Value.HumanName == "")
+                                ? keyValueParamPair.Key
+                                : keyValueParamPair.Value.HumanName;
+                            <MudItem xs="12" sm="12">
+                                <DynamicEditControl Label="@label"
+                                                    @bind-Value="keyValueParamPair.Value.Value"
+                                                    Where="@keyValueParamPair.Value.Where"
+                                                    OrderBy="@keyValueParamPair.Value.OrderBy"
+                                                    StringValuesList="@keyValueParamPair.Value.StringValuesList"
+                                                    ValueType="oType"/>
+                            </MudItem>
+                        }
+                    }
+                </MudGrid>
+            }
+        </MudCardContent>
+        <MudCardActions>
+            @if (_paramList != null && _form != null)
+            {
+                if (ShowSaveButton)
+                {
+                    <MudButton OnClick="SaveAsync" Disabled="@(!_success)" Color="Color.Primary">@SaveButtonText</MudButton>
+                }
+
+                if (ShowCancelButton)
+                {
+                    <MudButton OnClick="Cancel" Color="Color.Secondary">@CancelButtonText</MudButton>
+                }
+            }
+        </MudCardActions>
+    </MudCard>
+</MudForm>
+
+
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? _mudDialog { get; set; }
+
+    [Inject] private ILogger<ParamListDynamicForm>? _logger { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+    /// <summary>
+    /// Список параметров в формате Json
+    /// </summary>
+    [Parameter] public string? ParamListJson { get; set; }
+    [Parameter] public EventCallback<string> ParamListJsonChanged { get; set; }
+
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    [Parameter] public string SaveButtonText { get; set; } = "Сохранить";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+
+    private MudForm? _form { get; set; }
+    
+    private ParamList? _paramList { get; set; }
+
+    private bool _success;
+    private string[] _errors = [];
+    
+    /// <summary>
+    /// Карта имя параметра - тип параметра (Type)
+    /// </summary>
+    private readonly Dictionary<string, Type> _paramTypes = [];
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            _paramList = new ParamList();
+            if (ParamListJson != null && ParamListJson.Length > 0)
+            {
+                _paramList.FromJson(ParamListJson);
+            }
+            foreach (var kvp in _paramList.AsDictionary())
+            {
+                if (kvp.Value != null)
+                {
+                    string strEntityType = kvp.Value.TypeParam;
+                    Type? entityType = Type.GetType(strEntityType);
+                    if (entityType == null)
+                    {
+                        string err = $"Не удалось получить тип {strEntityType}";
+                        _logger?.LogError(err);
+                        _snackBar?.Add(err, Severity.Error);
+                        return;
+                    }
+                
+                    // Сохраняем тип параметра (потребуется для выбора контрола)
+                    _paramTypes[kvp.Key] = entityType;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            string err = $"Ошибка инициализации формы со списком параметров: {e.Message}";
+            _logger?.LogError(err);
+            _snackBar?.Add(err, Severity.Error);
+            _paramList = null;
+        }
+    }
+    
+    private async Task SaveAsync()
+    {
+        if (_mudDialog != null)
+        {
+            //_dialogResult.SaveToDatabase = true;
+            if (_paramList != null)
+            {
+                ParamListJson = _paramList.ToJson();
+                await ParamListJsonChanged.InvokeAsync(ParamListJson);
+            }
+            _mudDialog.Close(ParamListJson); 
+        }
+    }
+
+    private void Cancel()
+    {
+        if (_mudDialog != null)
+        {
+            _mudDialog.Cancel(); 
+        }
+    }
+} 

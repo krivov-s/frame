@@ -1,0 +1,110 @@
+﻿@using Blazor.AceEditorJs
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@* Для использования данного компонента во внешнем уровне требуется наличие MudDialogProvider  *@
+
+<MudSnackbarProvider />
+
+<MudTooltip Text="@ToolTip">
+    <MudButton Color="Color"
+               Disabled="Disabled"
+               Variant="Variant"
+               OnClick="OpenCodeEditorDialogAsync">@Title</MudButton>
+</MudTooltip>
+
+
+@code {
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] private ILogger<CodeEditorButton>? _logger { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Редактировать код";
+    [Parameter] public string ToolTip { get; set; } = "Редактор кода";
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    [Parameter] public bool ShowCompileButton { get; set; }
+    [Parameter] public string SaveButtonText { get; set; } = "Сохранить";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+    [Parameter] public string CompileButtonText { get; set; } = "Компиляция";
+
+    //[Parameter] public string Style { get; set; } = "height:60vh";
+    [Parameter] public AceLanguage Language { get; set; } = AceLanguage.csharp;
+    [Parameter] public AceTheme Theme { get; set; } = AceTheme.textmate;
+    [Parameter] public bool ShowLanguageList { get; set; }
+    [Parameter] public bool ShowThemeList { get; set; }
+
+    /// <summary>
+    /// Событие вызывается после нажатия на кнопку редкатора кода, перед отображением диалога
+    /// </summary>
+    [Parameter] public Func<string>? GetInitialCodeSample { get; set; }
+    
+    /// <summary>
+    /// Редактируемый код
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    
+    private async Task OpenCodeEditorDialogAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Сервис диалога не доступен", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            if (GetInitialCodeSample != null)
+            {
+                Value = GetInitialCodeSample();
+            }
+            
+            DialogOptions options = new DialogOptions
+            {
+                CloseOnEscapeKey = true,
+                MaxWidth = MaxWidth.Medium,
+                FullWidth = true,
+                Position = DialogPosition.Center,
+                FullScreen = true
+            };   
+            
+            DialogParameters parameters = new DialogParameters
+            {
+                {"Code", Value},
+                {"Language", Language},
+                {"Theme", Theme},
+                {"ShowLanguageList", ShowLanguageList},
+                {"ShowThemeList", ShowThemeList},
+                {"ShowSaveButton", ShowSaveButton},
+                {"ShowCancelButton", ShowCancelButton},
+                {"ShowCompileButton", ShowCompileButton},
+                {"SaveButtonText", SaveButtonText},
+                {"CancelButtonText", CancelButtonText},
+                {"CompileButtonText", CompileButtonText}
+            };
+
+            var dialog = await _dialogService.ShowAsync<CodeEditorDialog>("Редактор кода", parameters, options);
+            var result = await dialog.Result;
+
+            if (result is { Canceled: false })
+            {
+                if (result.Data is string data)
+                {
+                    Value = data;
+                    await ValueChanged.InvokeAsync(Value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _snackBar?.Add(ex.Message, Severity.Error);
+        }
+    }
+}

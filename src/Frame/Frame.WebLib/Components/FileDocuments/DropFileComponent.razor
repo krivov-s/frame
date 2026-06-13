@@ -1,0 +1,282 @@
+@using Frame.App.FileRepositories
+@using Frame.App.IEntityLoaders
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Logging
+@inject ISnackbar Snackbar
+
+<style>
+    .file-upload-input {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 10;
+        opacity: 0;
+    }
+</style>
+
+@if (_savingFileToStorage)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudAlert Severity="Severity.Info">Идет сохранение документов хранилище</MudAlert>
+        </MudItem>
+        <MudItem xs="12" sm="1">
+            <MudProgressCircular Color="Color.Default" Indeterminate="true" />
+        </MudItem>
+    </MudGrid>
+    <MudFlexBreak/>
+}
+
+<MudStack Style="width: 100%">
+    <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                   @ref="@_fileUpload"
+                   OnFilesChanged="_onInputFileChanged"
+                   AppendMultipleFiles
+                   Hidden="@false"
+                   InputClass="file-upload-input"
+                   tabindex="-1"
+                   @ondrop="@ClearDragClass"
+                   @ondragenter="@SetDragClass"
+                   @ondragleave="@ClearDragClass"
+                   @ondragend="@ClearDragClass">
+        <ActivatorContent>
+            <MudPaper Height="300px"
+                      Outlined="true"
+                      Class="@_dragClass">
+                <MudText Typo="Typo.h6">
+                    Перетащите сюда файлы или просто кликните мышкой чтобы открылось окно загрузки 
+                </MudText>
+                @foreach (var file in _fileNames)
+                {
+                    <MudChip T="string"
+                             Color="Color.Dark"
+                             Text="@file"
+                             tabindex="-1" />
+                }
+            </MudPaper>
+        </ActivatorContent>
+    </MudFileUpload>
+    <MudToolBar Gutters="@false"
+                Class="relative d-flex justify-end gap-4">
+        <MudButton Color="Color.Error"
+                   Disabled="@(!_fileNames.Any())"
+                   OnClick="@_uploadAllAsync"
+                   Variant="Variant.Filled">
+            Загрузить
+        </MudButton>
+        <MudButton Color="Color.Primary"
+                   Disabled="@(!_fileNames.Any())"
+                   OnClick="@_clearAsync"
+                   Variant="Variant.Filled">
+            Очистить
+        </MudButton>
+    </MudToolBar>
+</MudStack>
+
+@code {
+    /// <summary>
+    /// Общее объектное хранилище, определенное родительской формой. Если задано - обязательно используется.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+    
+    /// <summary>
+    /// Состояние внешней композитной формы, из которой предположительно пришел и IObjectStorage.
+    /// В случае успешного сохранения - форме сообщаем что все сохранено.
+    /// </summary>
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+    
+    [Inject] IFileDocumentService? _fileDocumentService { get; set; }
+    [Inject] IFrameSettingsLoader? _frameSettingsLoader { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<DropFileComponent>? _logger { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }    
+    /// <summary>
+    /// Id типа файла по-умолчанию, который будет подставляться новому файлу.
+    /// </summary>
+    [Parameter] public int DefaultFileDocumentTypeId { get; set; }
+
+    /// <summary>
+    /// Ключ владельца, будет присваиваться каждому создаваемому файл-документу
+    /// </summary>
+    [Parameter] public string OwnerKey { get; set; } = "";
+
+    /// <summary>
+    /// Системный тег, который будет "вешаться" на каждый создаваемый файл-документ 
+    /// </summary>
+    [Parameter] public string SystemTag { get; set; } = "";
+
+    /// <summary>
+    /// <para>Признак того, что в случае успешного выполнения загрузки файла через Drag Drop и сохранения
+    /// файл-документов в БД очищать флаг состояния композитной формы, переданной в каскадном параметре.</para>
+    /// <para>В сложных формах при использовании каскадного ObjectStorage при сохранении FileDocument сохранятся
+    /// ВСЕ изменения, ранее сделанные в ObjectStorage. Поэтому если это ObjectStorage композитной формы,
+    /// данный флаг даст указание сбросить у композитной формц dirty-флаг.</para>
+    /// </summary>
+    [Parameter] public bool ClearDirtyFlagOnCompositeFormOnUpload { get; set; }
+
+    /// <summary>
+    /// Событие, говорящее о том, что в БД был сохранен файл-документ. В случае сохранения пакета
+    /// документов событие вызывается для каждого документа отдельно.
+    /// </summary>
+    [Parameter] public EventCallback<FileDocument> OnFileDocumentSaved { get; set; }
+
+    /// <summary>
+    /// Событие, говорящее о том, что в БД был сохранен набор файл-документов. Событие вызывается один раз
+    /// на каждое нажатие кнопки "Загрузить" и оповещает об успешном или об ошибочном завершении сохранения.
+    /// Аргумент - кол-во сохраненных документов
+    /// </summary>
+    [Parameter] public EventCallback<int> OnFileDocumentListSaved { get; set; }
+    
+    private const string DefaultDragClass = "relative rounded-lg border-2 border-dashed pa-4 mt-4 mud-width-full mud-height-full";
+    private string _dragClass = DefaultDragClass;
+    private MudFileUpload<IReadOnlyList<IBrowserFile>>? _fileUpload;
+    
+    private readonly List<string> _fileNames = [];
+    private readonly List<IBrowserFile> _browserFiles = [];
+
+    private bool _savingFileToStorage = false;
+    
+    private async Task _clearAsync()
+    {
+        await (_fileUpload?.ClearAsync() ?? Task.CompletedTask);
+        _fileNames.Clear();
+        _browserFiles.Clear();
+        ClearDragClass();
+    }
+
+    private void _onInputFileChanged(InputFileChangeEventArgs e)
+    {
+        ClearDragClass();
+        var files = e.GetMultipleFiles();
+        foreach (var file in files)
+        {
+            _fileNames.Add(file.Name);
+            _browserFiles.Add(file);
+        }
+    }
+
+    private async Task _uploadAllAsync()
+    {
+        if (_browserFiles.Count == 0)
+        {
+            await _clearAsync();
+            return;
+        }
+
+        bool confirm = await _askConfirmation();
+        if(!confirm) return;
+        
+        int successCount = 0;
+        foreach (IBrowserFile browserFile in _browserFiles)
+        {
+            bool done = await _uploadFile(browserFile);
+            if (!done)
+            {
+                await OnFileDocumentListSaved.InvokeAsync(successCount);
+                return;
+            }
+
+            successCount++;
+        }
+
+        await _clearAsync();
+        _snackBar?.Add("Загрузка документов в хранилище успешно завершена!", Severity.Success);
+        await OnFileDocumentListSaved.InvokeAsync(successCount);
+        if (ClearDirtyFlagOnCompositeFormOnUpload && _compositeFormState != null && successCount > 0)
+        {
+            _compositeFormState.SetDirty(false);
+        }
+        StateHasChanged();
+    }
+
+    private async Task<bool> _uploadFile(IBrowserFile? fileFromBrowser)
+    {
+        try
+        {
+            if (fileFromBrowser != null && _fileDocumentService != null &&
+                _sharedObjectStorage != null )
+            {
+                // Инициализируем параметры FileDocument шаблона отчета
+                // Имя файл-документа = Имя отчета
+                FileDocument fileDocument = new()
+                {
+                    DocumentName = Path.GetFileNameWithoutExtension(fileFromBrowser.Name),
+                    OwnerKey = OwnerKey, 
+                    SystemTag = SystemTag
+                };
+                
+                if (DefaultFileDocumentTypeId > 0)
+                {
+                    fileDocument.FileDocumentTypeId = DefaultFileDocumentTypeId;
+                }
+                
+                Result res;
+                _savingFileToStorage = true;
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    await using (Stream fileStream = fileFromBrowser.OpenReadStream(fileFromBrowser.Size))
+                    {
+                        await fileStream.CopyToAsync(ms);
+                    }
+                    ms.Position = 0;
+                    res = await _fileDocumentService.SaveFileToDocumentAsync(
+                        fileDocument, ms, fileFromBrowser.Name, _sharedObjectStorage);
+                }
+
+                if (res.IsError)
+                {
+                    _snackBar?.Add(res.ErrorResult, Severity.Error);
+                    return false;
+                }
+
+                await OnFileDocumentSaved.InvokeAsync(fileDocument);
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            string strError = $"Ошибка загрузки шаблона отчета в хранилище: {ex.Message}";
+            _logger?.LogError(strError);
+            _snackBar?.Add(strError, Severity.Error);
+            return false;
+        }
+        finally
+        {
+            _savingFileToStorage = false;
+        }
+    }
+
+    private async Task<bool> _askConfirmation()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Отсутствует IDialogService", Severity.Error);
+            return false;
+        }
+        
+        MarkupString markupString = new(
+            $"При загрузке документов <b>все текущие изменения будут сохранены в БД</b>. Выполнить загрузку?");
+        bool? result = await _dialogService.ShowMessageBox(
+            "Подтверждение",
+            markupString,
+            yesText: "Да, выполнить!", noText: "Нет, подумать");
+
+        if (result == null)
+        {
+            result = false;
+        }
+
+        return result.Value;
+    }
+    
+    private void SetDragClass()
+        => _dragClass = $"{DefaultDragClass} mud-border-primary";
+
+    private void ClearDragClass()
+        => _dragClass = DefaultDragClass;
+}

@@ -1,0 +1,40 @@
+﻿@page "/savedfilter_list"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>@_pageTitle</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+ 
+<EntitiesListDetail TEntity="SavedFilter"
+                    TParentComponent="PL_SavedFilter"
+                    Title="Список сохраненных фильтров"
+                    ConfigureQuerySpecification="x => x
+                                            .Include(x => x.SavedFilterGroups)
+                                            .Build()"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.Name" Title="@SavedFilter.Meta.Name.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.EntityTypeHumanName" Title="@SavedFilter.Meta.EntityTypeHumanName.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.EntityTypeName" Title="@SavedFilter.Meta.EntityTypeName.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.UserTag" Title="@SavedFilter.Meta.UserTag.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.SystemTag" Title="@SavedFilter.Meta.SystemTag.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedFilter" TProperty="@string" Property="x => x.SavedFilterGroupNames" Title="@SavedFilter.Meta.SavedFilterGroupNames.HumanName"></PropertyColumn>
+    </GridContent>
+
+    <FormContent>
+        <CF_SavedFilter FormObject="context"/>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+    [Parameter] public string SystemTag { get; set; } = "";
+
+    private string _pageTitle { get; set; } = "Сохраненные фильтры";
+}

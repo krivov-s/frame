@@ -1,0 +1,26 @@
+﻿@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+
+@if (CurrentUser != null)
+{
+    <EntitiesListDetail TEntity="UserClaim"
+                        TParentComponent="CF_UserClaims"
+                        Title="Список требований"
+                        Entities="CurrentUser.UserClaims"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        OnBeforeEditFormContent="(claim, _) => {claim.User = CurrentUser; claim.UserId = CurrentUser.Id; }">
+
+        <GridContent>
+            <PropertyColumn T="@UserClaim" TProperty="@string" Property="x => x.ClaimType" Title="@UserClaim.Meta.ClaimType.HumanName"></PropertyColumn>
+            <PropertyColumn T="@UserClaim" TProperty="@string" Property="x => x.ClaimValue" Title="@UserClaim.Meta.ClaimValue.HumanName"></PropertyColumn>
+            <PropertyColumn T="@UserClaim" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+        </GridContent>
+
+    </EntitiesListDetail>
+}
+
+@code {
+    [Parameter] public User? CurrentUser { get; set; }
+
+}

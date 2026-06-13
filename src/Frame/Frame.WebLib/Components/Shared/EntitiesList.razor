@@ -1,0 +1,192 @@
+﻿@* @using Frame.Domain.Entities.Core *@
+@* @using Microsoft.AspNetCore.Components.Web *@
+@* @using Microsoft.Extensions.Logging *@
+@* @using SmartFormat *@
+@* *@
+@* @typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new() *@
+@* @typeparam TParentComponent where TParentComponent : class *@
+@* *@
+@* <style> *@
+@*     .selected { *@
+@*         background-color: #1E88E5 !important; *@
+@*     } *@
+@* *@
+@*     .selected > td { *@
+@*         color: white !important; *@
+@*     } *@
+@* *@
+@*     .selected > td .mud-input { *@
+@*         color: white !important; *@
+@*     } *@
+@* </style> *@
+@* *@
+@* <ErrorBoundary> *@
+@*     <ChildContent> *@
+@*         @if(_loading) *@
+@*         { *@
+@*             <MudProgressCircular Color="Color.Primary" Indeterminate="true" /> *@
+@*             <MudText>Идет загрузка...</MudText> *@
+@*         } *@
+@*         else *@
+@*         { *@
+@*             if(_isAuthorized) *@
+@*             { *@
+@*                 @if (!_canViewTEntity) *@
+@*                 { *@
+@*                     <MudAlert Severity="Severity.Warning">Отсутствуют права доступа на чтение объектов данного типа</MudAlert> *@
+@*                 } *@
+@*                 else *@
+@*                 { *@
+@*                     <MudGrid> *@
+@*                         @if (EditMode != EntitiesListEditMode.ReadOnly) *@
+@*                         { *@
+@*                             MarkupString strTitle = BuildTitle(); *@
+@*                             <MudItem xs="10"> *@
+@*                                 @if (strTitle.Value.Length > 0 && ShowTitle) *@
+@*                                 { *@
+@*                                     <MudText Typo="@TitleTypo">СТАРЫЙ EntitiesList!!! @strTitle</MudText> *@
+@*                                 } *@
+@*                             </MudItem> *@
+@*                             <MudItem xs="2" style="display: flex; justify-content: flex-end"> *@
+@*                                 @if (Operations != null && Operations.Count() > 0) *@
+@*                                 { *@
+@*                                     <MudTooltip Text="Операции с элементами списка" Arrow="true" Color="Color.Default"> *@
+@*                                         <MudMenu class="object-right" Icon="@Icons.Material.Filled.MoreVert" Color="Color.Primary"> *@
+@*                                             @foreach (var menu in Operations) *@
+@*                                             { *@
+@*                                                 bool isActive = false; *@
+@*                                                 isActive = (menu.Value.ActiveAlways) *@
+@*                                                 || (menu.Value.ActiveOnSelected && _selectedEntities.Count > 0) *@
+@*                                                 || (menu.Value.ActiveOnCurrent && CurrentEntity != null) *@
+@*                                                 || (menu.Value.ActiveOnNoCurrentAndSelected && CurrentEntity == null && _selectedEntities.Count == 0); *@
+@*                                                 if (menu.Value.Href != "") *@
+@*                                                 { *@
+@*                                                     // Формируем ссылку с использованием Smart.Format *@
+@*                                                     string strHref = menu.Value.Href; *@
+@*                                                     try *@
+@*                                                     { *@
+@*                                                         strHref = Smart.Format(menu.Value.Href, BuildArgsForSmartFormat(null)); *@
+@*                                                     } *@
+@*                                                     catch (Exception ex) *@
+@*                                                     { *@
+@*                                                         string strError = $"Ошибка формирования HRef для операции {menu.Key}"; *@
+@*                                                         SnackBar?.Add(strError, Severity.Error); *@
+@*                                                         Logger?.LogError(ex, strError); *@
+@*                                                     } *@
+@*                                                     if (menu.Value.NewWindow) *@
+@*                                                     { *@
+@*                                                         <MudMenuItem Disabled="@(!isActive)" OnClick="x => NavigateToNewTab(strHref)"> @menu.Key </MudMenuItem> *@
+@*                                                     } *@
+@*                                                     else *@
+@*                                                     { *@
+@*                                                         <MudMenuItem Disabled="@(!isActive)" Href="@menu.Value.Href"> @menu.Key </MudMenuItem> *@
+@*                                                     } *@
+@*                                                 } *@
+@*                                                 else *@
+@*                                                 { *@
+@*                                                     <MudMenuItem Disabled="@(!isActive)" OnClick="x => ProcessMenuOperationAsync(menu.Key, menu.Value)">@menu.Key</MudMenuItem> *@
+@*                                                 } *@
+@*                                             } *@
+@*                                         </MudMenu> *@
+@*                                     </MudTooltip> *@
+@*                                 } *@
+@*                                 @if (ShowAddButton) *@
+@*                                 { *@
+@*                                     <MudTooltip Text="@TooltipAddButton" Arrow="true" Color="Color.Default"> *@
+@*                                         <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.Add" Color="Color.Primary" OnClick="AddNewAsync" /> *@
+@*                                     </MudTooltip> *@
+@*                                 } *@
+@*                                 @if (ShowDeleteButton && _selectedEntities.Count > 0) *@
+@*                                 { *@
+@*                                     <MudTooltip Text="@TooltipDeleteSelectedButton" Arrow="true" Color="Color.Default"> *@
+@*                                         <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.DeleteOutline" Color="Color.Primary" OnClick="DeleteAllAsync" /> *@
+@*                                     </MudTooltip> *@
+@*                                 } *@
+@*                                 <MudTooltip Text="@TooltipRefreshListButton" Arrow="true" Color="Color.Default"> *@
+@*                                     <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.Refresh" Color="Color.Primary" OnClick="RefreshAsync" /> *@
+@*                                 </MudTooltip> *@
+@*                             </MudItem> *@
+@*                         } *@
+@*                         <MudDivider /> *@
+@*                         <MudItem xs="12"> *@
+@*                             $1$ SelectedItems="_selectedEntities" #1# *@
+@*                             <div tabindex="0" @onkeydown="@HandleKeyDown" @ondblclick="@OnDblClick"> *@
+@*                                 <MudDataGrid @ref="_dataGrid" T="TEntity" Items="@_entities" *@
+@*                                                 MultiSelection="true" *@
+@*                                                 SelectOnRowClick="false" *@
+@*                                                 SelectedItemChanged="SelectedItemChangedAsync" *@
+@*                                                 SelectedItemsChanged="SelectedItemsChangedAsync" *@
+@*                                                 ReadOnly="_dataGridReadOnly" *@
+@*                                                 EditMode="DataGridEditMode.Form" *@
+@*                                                 EditTrigger="DataGridEditTrigger.Manual" *@
+@*                                                 CommittedItemChanges="@ItemChangedAfterInternalEditing" *@
+@*                                                 Filterable="true" *@
+@*                                                 RowClick="@OnRowClick" *@
+@*                                                 RowClass="cursor-pointer" *@
+@*                                                 RowClassFunc="@SelectedRowClassFunc" *@
+@*                                                 FilterMode="DataGridFilterMode.ColumnFilterRow" *@
+@*                                                 Hover="true" Bordered="true" Dense="true"> *@
+@*                                     <Columns> *@
+@*                                         <SelectColumn T="TEntity" /> *@
+@*                                         @ChildContent *@
+@*                                         @if (EditMode != EntitiesListEditMode.ReadOnly) *@
+@*                                         { *@
+@*                                             <TemplateColumn Filterable="false" Sortable="false"> *@
+@*                                                 <CellTemplate Context="ctx"> *@
+@*                                                     @if (ShowEditButton) *@
+@*                                                     { *@
+@*                                                         if (EditMode == EntitiesListEditMode.InternalDialog) *@
+@*                                                         { *@
+@*                                                             <MudTooltip Text="@TooltipEditButton" Arrow="true" Color="Color.Default"> *@
+@*                                                                 <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Edit" OnClick="@ctx.Actions.StartEditingItemAsync" /> *@
+@*                                                             </MudTooltip> *@
+@*                                                         } *@
+@*                                                         else *@
+@*                                                         { *@
+@*                                                             <MudTooltip Text="@TooltipEditButton" Arrow="true" Color="Color.Default"> *@
+@*                                                                 <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Edit" OnClick="(x) => EditAsync(ctx.Item)" /> *@
+@*                                                             </MudTooltip> *@
+@*                                                         } *@
+@*                                                     } *@
+@*                                                     @if (ShowDeleteButton) *@
+@*                                                     { *@
+@*                                                         <MudTooltip Text="@TooltipDeleteButton" Arrow="true" Color="Color.Default"> *@
+@*                                                             <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" OnClick="(x) => DeleteAsync(ctx.Item)" /> *@
+@*                                                         </MudTooltip> *@
+@*                                                     } *@
+@*                                                     @if (ShowAuditButton) *@
+@*                                                     { *@
+@*                                                         <MudTooltip Text="@TooltipAuditButton" Arrow="true" Color="Color.Default"> *@
+@*                                                             <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.History" OnClick="(x) => AuditAsync(ctx.Item)" /> *@
+@*                                                         </MudTooltip> *@
+@*                                                     } *@
+@*                                                 </CellTemplate> *@
+@*                                             </TemplateColumn> *@
+@*                                         } *@
+@*                                     </Columns> *@
+@*                                     <PagerContent> *@
+@*                                         <MudDataGridPager T="TEntity" /> *@
+@*                                         $1$ DisableRowsPerPage="true" #1# *@
+@*                                     </PagerContent> *@
+@*                                 </MudDataGrid> *@
+@* *@
+@*                             </div> *@
+@*                         </MudItem> *@
+@*                     </MudGrid> *@
+@*                 } *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 <MudAlert Severity="MudBlazor.Severity.Error">Ошибка авторизации!</MudAlert> *@
+@*             } *@
+@*         } *@
+@*         $1$ <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" @onclick="(e => SaveAsync())" /> #1# *@
+@*     </ChildContent> *@
+@*     <ErrorContent Context="ctx"> *@
+@*         <p class="errorUI">😈 Какая-то хрень </p> *@
+@*     </ErrorContent> *@
+@* </ErrorBoundary> *@
+@* *@
+@* *@
+@* *@
+@* *@

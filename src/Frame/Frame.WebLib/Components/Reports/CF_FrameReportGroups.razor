@@ -1,0 +1,115 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Reports
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+@if (CurrentReport != null)
+{
+    <EntitiesListDetail TEntity="FrameReportGroupLink"
+                        TParentComponent="CF_FrameReportGroups"
+                        Title="Список групп"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        ShowEditButton="false"
+                        Entities="CurrentReport.FrameReportGroups"
+                        OnAddNewAsync="_addNewFrameReportGroupLink">
+        <GridContent>
+            <PropertyColumn T="@FrameReportGroupLink" TProperty="@string" Property="x => x.FrameReportGroup != null ? x.FrameReportGroup.Name : string.Empty"  Title="@FrameReportGroup.Meta.Name.HumanName"></PropertyColumn>
+        </GridContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public FrameReport? CurrentReport { get; set; }
+
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+
+    private SimpleEditForm<FrameReportGroup, CF_FrameReportGroups>? _formFrameReportGroup { get; set; }
+
+    protected readonly Dictionary<string, EntitiesListOperation<FrameReportGroupLink>> Commands = [];
+
+    private async Task<Result<FrameReportGroupLink>> _addNewFrameReportGroupLink(IBaseRepository<FrameReportGroupLink>? repository)
+    {
+        Result<FrameReportGroupLink> res = Result<FrameReportGroupLink>.Success(null);
+        FrameReport? report = (FrameReport?)CurrentReport;
+
+        if (_dialogService != null && repository != null && CurrentReport != null)
+        {
+            try
+            {
+                IObjectStorage objectStorage = repository.ObjectStorage;
+
+                DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+                DialogParameters<SelectDialog<FrameReportGroup>> parameters = new DialogParameters<SelectDialog<FrameReportGroup>>();
+
+                Result<List<FrameReportGroup>> resRole = await objectStorage.GetListAsync<FrameReportGroup>("Чтение всех групп");
+                if (resRole.IsErrorOrNull)
+                {
+                    _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+                    return res;
+                }
+
+                List<FrameReportGroup> reports = resRole.Value!;
+                if (reports.Count == 0)
+                {
+                    _snackBar?.Add("Не найдены группы для добавления", Severity.Info);
+                    return res;
+                }
+
+                var excludedIDs = new HashSet<int>(CurrentReport.FrameReportGroups.Select(p => p.FrameReport!.Id));
+                var groupsClean = reports.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+                if (groupsClean.Count > 0)
+                {
+                    parameters.Add(x => x.Items, groupsClean);
+                    var dialog = await _dialogService.ShowAsync<SelectDialog<FrameReportGroup>>("Выберите группу", parameters, options);
+                    var result = await dialog.Result;
+                    if (result is { Canceled: false })
+                    {
+                        FrameReportGroup? group = (FrameReportGroup?)result.Data;
+                        if (group != null)
+                        {
+                            FrameReportGroupLink rel = new()
+                            {
+                                FrameReportGroupId = group.Id,
+                                FrameReportGroup = group,
+                                FrameReportId = CurrentReport.Id,
+                                FrameReport = CurrentReport
+                            };
+                            CurrentReport.FrameReportGroups.Add(rel);
+                            objectStorage.Add(rel);
+                            _compositeFormState?.SetDirty(true);
+                            return Result<FrameReportGroupLink>.Success(rel);
+                        }
+                    }
+                }
+                else
+                {
+                    _snackBar?.Add($"Отсутствуют группы для добавления", Severity.Info);
+                }
+            }
+            catch(Exception exc)
+            {
+                var daatt = exc;
+            }
+
+            return res;
+        }
+        else
+        {
+            _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+        }
+        return res;
+    }
+}

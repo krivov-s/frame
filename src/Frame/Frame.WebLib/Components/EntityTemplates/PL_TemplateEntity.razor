@@ -1,0 +1,43 @@
+﻿@page "/template_entity_list"
+@using Frame.Domain.Entities.Core
+@using Microsoft.AspNetCore.Components.Web
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+<MudSnackbarProvider />
+
+<PageTitle>Список шаблонов</PageTitle>
+
+<EntitiesListDetail TEntity="TemplateEntity"
+                    TParentComponent="PL_TemplateEntity"
+                    ConfigureQuerySpecification="spec => spec.Include(x => x.UserOwner).Build()"
+                    Title="Список шаблонов">
+
+    <GridContent>
+        <PropertyColumn T="@TemplateEntity" 
+                        TProperty="@string" 
+                        Property="x => x.UserOwner != null ? x.UserOwner.Description : string.Empty" 
+                        Title="@TemplateEntity.Meta.UserOwner.HumanName"/>
+        <PropertyColumn T="@TemplateEntity" 
+                        TProperty="@string" 
+                        Property="x => x.Name" 
+                        Title="@TemplateEntity.Meta.Name.HumanName"/>
+        <PropertyColumn T="@TemplateEntity" 
+                        TProperty="@string" 
+                        Property="x => x.EntityTypeHumanName" 
+                        Title="@TemplateEntity.Meta.EntityTypeHumanName.HumanName"/>
+        <PropertyColumn T="@TemplateEntity" 
+                        TProperty="@string" 
+                        Property="x => x.EntityTypeName" 
+                        Title="@TemplateEntity.Meta.EntityTypeName.HumanName"/>
+        <PropertyColumn T="@TemplateEntity" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <SimpleEditForm TEntity="TemplateEntity" TParentComponent="TemplateEntity" Entity="context"></SimpleEditForm>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+
+}

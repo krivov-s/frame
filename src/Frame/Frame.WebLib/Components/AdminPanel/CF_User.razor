@@ -1,0 +1,233 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.Cores
+@using Frame.App.IEntityRepositories
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCard>
+            <MudCardHeader>
+                <MudText Typo="Typo.h5">Пользователь @_user?.FIO</MudText>
+            </MudCardHeader>
+            <MudDivider />
+            <MudCardContent>
+                @if (_user != null)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                        <MudTabPanel Text="Параметры">
+                            <SimpleEditForm @ref="_formUser"
+                                            TEntity="User"
+                                            TParentComponent="CF_User"
+                                            Entity="_user"
+                                            ShowTitle="false">
+                                @if (_formUser != null)
+                                {
+                                    <MudGrid>
+                                        @* ========== Line 1 ========= *@
+                                        <MudItem xs="12" sm="6">
+                                            <FieldEditFactory TEntity="User" Entity="_user" Field="User.Meta.Login" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <MudTextField T="string"
+                                                          @bind-Value="_plainPassword"
+                                                          ReadOnly="!_canModify"
+                                                          name="PlainPassword" Label="Пароль" ShrinkLabel="true"
+                                                          InputType="InputType.Password"
+                                                          Required="true"
+                                                          RequiredError="Пароль должен быть указан!"
+                                                          Variant="Variant.Outlined" />
+                                        </MudItem>
+                                        @* ========== Line 2 ========= *@
+                                        <MudItem xs="12" sm="6">
+                                            <FieldEditFactory TEntity="User" Entity="_user" Field="User.Meta.FIO" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <RefEditFactory TEntity="User" Entity="_user" Field="User.Meta.Division" ValueChanged="_formUser.SetDataChanged" />
+                                        </MudItem>
+                                        @* ========== Line 3 ========= *@
+                                        <MudItem xs="12" sm="6">
+                                            <FieldEditFactory TEntity="User" Entity="_user" Field="User.Meta.ChangePassOnNextLogin" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6">
+                                            <FieldEditFactory TEntity="User" Entity="_user" Field="User.Meta.Disabled" />
+                                        </MudItem>
+                                        @* ========== Line 4 ========= *@
+                                        <MudItem xs="12" sm="12">
+                                            <FieldEditFactory TEntity="User" 
+                                                              Entity="_user" 
+                                                              Field="User.Meta.Comment"
+                                                              Lines="3"
+                                                              MaxLines="20"
+                                                              AutoGrow="true"/>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="12">
+                                            <MudStack Row="true">
+                                                <CodeEditorButton @bind-Value="@_user.UserProfile.ParamListJson"
+                                                                  Title="Редактор списка параметров"
+                                                                  Language="AceLanguage.json" />
+                                                <ParamListDesignerButton Title="Дизайнер списка параметров"
+                                                                         Color="Color.Primary"
+                                                                         Variant="Variant.Outlined"
+                                                                         Value="@_user.UserProfile.ParamListJson"
+                                                                         ValueChanged="val => { _user.UserProfile.ParamListJson = val; }" />
+                                                <ParamListEditorButton Title="Тестирование списка параметров"
+                                                                       Color="Color.Primary"
+                                                                       Variant="Variant.Outlined"
+                                                                       ShowSaveButton="false"
+                                                                       ShowCancelButton="true"
+                                                                       CancelButtonText="Закрыть"
+                                                                       Value="@_user.UserProfile.ParamListJson" />
+                                            </MudStack>
+                                        </MudItem>
+                                    </MudGrid>
+                                }
+                            </SimpleEditForm>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Роли (Roles)">
+                            <CF_UserRoles CurrentUser="_user" />
+                        </MudTabPanel>
+                        <MudTabPanel Text="Утверждения (Claims)">
+                            <EntitiesListDetail TEntity="UserClaim"
+                                                TParentComponent="CF_User"
+                                                Title="Список требований"
+                                                Entities="_user.UserClaims"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnBeforeEditFormContent="(claim, _) => {claim.User = _user; claim.UserId = _user.Id; }">
+
+                                <GridContent>
+                                    <PropertyColumn T="@UserClaim" TProperty="@string" Property="x => x.ClaimType" Title="@UserClaim.Meta.ClaimType.HumanName" />
+                                    <PropertyColumn T="@UserClaim" TProperty="@string" Property="x => x.ClaimValue" Title="@UserClaim.Meta.ClaimValue.HumanName" />
+                                    <PropertyColumn T="@UserClaim" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+                                </GridContent>
+
+                                <FormContent>
+                                    <CF_UserClaim FormObject="context" />
+                                </FormContent>
+
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                    </MudTabs>
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+
+    [Parameter] public int id { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_User>? _logger { get; set; }
+    [Inject] private IUserCore? _userCore { get; set; }
+
+    private User? _user { get; set; }
+    private int _plainPassLength = 10;
+
+    private string _plainPassword
+    {
+        set
+        {
+            try
+            {
+                _user?.SetPassword(value);
+                _plainPassLength = value.Length;
+            }
+            catch
+            {
+                _user?.SetPassword("");
+            }
+        }
+        get
+        {
+            if (_user != null && _user.PasswordHash.Length > 0)
+            {
+                return new string('@', _plainPassLength);
+            }
+            return "";
+        }
+    }
+    private bool _isAuthorized;
+    private bool _canModify = false;
+
+    private SimpleEditForm<User, CF_User>? _formUser { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+
+        if (_isAuthorized)
+        {
+            if (id != 0)
+            {
+                await _loadUserAsync(id);
+            }
+            else
+            {
+                _user = new User();
+            }
+
+            if (_userCore != null && _user != null)
+            {
+                Result<bool> res = _userCore.CanModify(_user);
+                if (!res.IsErrorOrNull) _canModify = res.Value;
+            }
+        }
+
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task _loadUserAsync(int userId)
+    {
+        if (SharedObjectStorage == null)
+        {
+            string err = "Отсутствует IObjectStorage";
+            _logger?.LogError("{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+            return;
+        }
+
+        Result<User> resUser = await SharedObjectStorage.GetObjAsync<User>(userId, spec => spec
+            .Include(u => u.UserProfile)
+            .Include(u => u.Division)
+            .Include(u => u.UserClaims)
+            .Include(u => u.UsersRoles).ThenInclude(ur => ur.Role)
+            .Build()
+        );
+
+        if (resUser.IsErrorOrNull)
+        {
+            _snackBar?.Add(resUser.ErrorResult, Severity.Error);
+            return;
+        }
+
+        _user = resUser.Value;
+    }
+}

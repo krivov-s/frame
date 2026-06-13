@@ -1,0 +1,162 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCard>
+            <MudCardHeader>
+                <MudText Typo="Typo.h5">Группа сохранённых запросов @_formObject?.Name</MudText>
+            </MudCardHeader>
+            <MudDivider />
+            <MudCardContent>
+                @if (_formObject != null)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                        <MudTabPanel Text="Параметры">
+                            <SimpleEditForm @ref="_formSavedQueryGroup"
+                                            TEntity="SavedQueryGroup"
+                                            TParentComponent="CF_SavedQueryGroupQueries"
+                                            Entity="_formObject"
+                                            ShowTitle="false">
+                                <MudGrid>
+                                    <MudItem xs="12" sm="12">
+                                        <MudStack Row="false">
+                                            <FieldEditFactory TEntity="SavedQueryGroup" Entity="_formObject" Field="SavedQueryGroup.Meta.Name" />
+                                            <FieldEditFactory TEntity="SavedQueryGroup" Entity="_formObject" Field="SavedQueryGroup.Meta.Descr" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </SimpleEditForm>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Отчёты">
+                            <EntitiesListDetail TEntity="SavedQueryGroupLink"
+                                                TParentComponent="CF_SavedQueryGroupQueries"
+                                                Title="Список сохранённых запросов"
+                                                Entities="_formObject.SavedQueries"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnAddNewAsync="_addNewSavedQueryGroupLink">
+                                <GridContent>
+                                    <PropertyColumn T="@SavedQueryGroupLink" TProperty="@string" Property="x => x.SavedQuery != null ? x.SavedQuery.Name : string.Empty" Title="@SavedQuery.Meta.Name.HumanName" />
+                                    <PropertyColumn T="@SavedQueryGroupLink" TProperty="@string" Property="x => x.SavedQuery != null ? x.SavedQuery.Descr : string.Empty" Title="@SavedQuery.Meta.Descr.HumanName" />
+                                </GridContent>
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                    </MudTabs>
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudCardContent>
+
+        </MudCard>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public int id { get; set; }
+    [Parameter] public SavedQueryGroup? FormObject { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_SavedQueryGroupQueries>? _logger { get; set; }
+
+    private SavedQueryGroup? _formObject = null;
+    private SavedQuery? _savedQuery = null;
+
+    private bool _isAuthorized;
+
+    private SimpleEditForm<SavedQueryGroup, CF_SavedQueryGroupQueries>? _formSavedQueryGroup { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    protected readonly Dictionary<string, EntitiesListOperation<SavedQueryGroupLink>> Commands = [];
+
+    private async Task<Result<SavedQueryGroupLink>> _addNewSavedQueryGroupLink(IBaseRepository<SavedQueryGroupLink>? repository)
+    {
+        Result<SavedQueryGroupLink> res = Result<SavedQueryGroupLink>.Success(null);
+
+        if (_dialogService != null && repository != null && FormObject != null)
+        {
+            IObjectStorage objectStorage = repository.ObjectStorage;
+
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<SavedQuery>> parameters = new DialogParameters<SelectDialog<SavedQuery>>();
+
+            Result<List<SavedQuery>> resReports = await objectStorage.GetListAsync<SavedQuery>("Чтение всех сохранённых запросов");
+            if (resReports.IsErrorOrNull)
+            {
+                _snackBar?.Add(resReports.ErrorResult, Severity.Error);
+                return res;
+            }
+
+            List<SavedQuery> users = resReports.Value!;
+            if (users.Count == 0)
+            {
+                _snackBar?.Add("Не найдены отчёты для добавления", Severity.Info);
+                return res;
+            }
+
+            var excludedIDs = new HashSet<int>(FormObject.SavedQueries.Select(p => p.SavedQuery.Id));
+            var queriesClean = users.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+            if (queriesClean.Count > 0)
+            {
+                parameters.Add(x => x.Items, queriesClean);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<SavedQueryGroup>>("Выберите пользователя", parameters, options);
+                var result = await dialog.Result;
+                if (result is { Canceled: false })
+                {
+                    SavedQuery? report = (SavedQuery?)result.Data;
+                    if (report != null)
+                    {
+                        SavedQueryGroupLink rel = new()
+                        {
+                            SavedQueryGroupId = FormObject.Id,
+                            SavedQueryGroup = FormObject,
+                            SavedQueryId = report.Id,
+                            SavedQuery = report
+                        };
+                        FormObject.SavedQueries.Add(rel);
+                        objectStorage.Add(rel);
+                        _compositeFormState?.SetDirty(true);
+                        return Result<SavedQueryGroupLink>.Success(rel);
+                    }
+                }
+            }
+            else
+            {
+                _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+            }
+        }
+
+        return res;
+    }
+}

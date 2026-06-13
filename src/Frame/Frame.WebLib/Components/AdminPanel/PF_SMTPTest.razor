@@ -1,0 +1,170 @@
+﻿@page "/smtp_test"
+
+@using MailKit.Net.Smtp
+@using MailKit.Security
+@using MimeKit;
+
+<MudSnackbarProvider />
+
+<MudCard>
+    @if (AdminCodeAccepted)
+    {
+        <MudCardContent>
+            <MudGrid>
+                @* ========== Line 1 ========= *@
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="string"
+                                  Label="Сервер"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_server"
+                                  name="_server"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="int"
+                                  Label="Сервер"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_port"
+                                  name="_port"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+                @* ========== Line 2 ========= *@
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="string"
+                                  Label="Имя отправителя"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_sendFromName"
+                                  name="_sendToName"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="string"
+                                  Label="Почта отправителя"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_sendFromEmail"
+                                  name="_sendToEmail"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+                @* ========== Line 3 ========= *@
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="string"
+                                  Label="Имя получателя"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_sendToName"
+                                  name="_sendToName"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+                <MudItem xl="12" sm="6">
+                    <MudTextField T="string"
+                                  Label="Почта получателя"
+                                  ShrinkLabel="true"
+                                  @bind-Value="_sendToEmail"
+                                  name="_sendToEmail"
+                                  Variant="Variant.Outlined"
+                                  Class="ma-1" />
+                </MudItem>
+
+            </MudGrid>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Class="ma-1">Отправить</MudButton>
+        </MudCardContent>
+    }
+    else
+    {
+        <MudCardContent>
+            <MudTextField @bind-Value="AdminCode"
+                          name="AdminCode"
+                          Label="Код доступа" ShrinkLabel="true"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password" class="ma-1" />
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="CheckAdminCode" class="ma-1">Проверить код администратора</MudButton>
+        </MudCardContent>
+    }
+</MudCard>
+
+@code {
+    [Inject] protected ISnackbar? _snackBar { get; set; }
+
+    // === Настройки SMTP ===
+    private string _server { get; set; } = "smtp.rshb.ru";
+    private int _port { get; set; } = 25;
+    private string _sendToName { get; set; } = "";
+    private string _sendToEmail { get; set; } = "";
+    private string _sendFromName { get; set; } = "Паспортизация";
+    private string _sendFromEmail { get; set; } = "is_ahd@rshb.ru";
+
+    // === Настройки ===
+    private bool AdminCodeAccepted { get; set; }
+    private string DefaultAdminCode { get; set; } = "65535";
+    private string AdminCode { get; set; } = "";
+
+    private async Task SendMail()
+    {
+        // Создаем сообщение
+        var message = new MimeMessage();
+
+        // От кого (можно указать имя и email)
+        message.From.Add(new MailboxAddress(_sendFromName, _sendFromEmail));
+
+        // Кому (несколько адресатов)
+        message.To.Add(new MailboxAddress(_sendToName, _sendToEmail));
+
+        // Тема письма
+        message.Subject = "Тестовое письмо с MailKit и полным набором параметров";
+
+        // Тело письма (в HTML и plain text)
+        var bodyBuilder = new BodyBuilder
+        {
+            TextBody = "Это текстовая версия письма.",
+            HtmlBody = "<p>Это <b>HTML</b> версия письма.</p>"
+        };
+
+        message.Body = bodyBuilder.ToMessageBody();
+
+
+        try
+        {
+            using var smtpClient = new SmtpClient();
+
+            // Подключение к серверу с шифрованием STARTTLS
+            await smtpClient.ConnectAsync(_server, _port, SecureSocketOptions.Auto);
+
+            // Аутентификация (если требуется)
+            //await smtpClient.AuthenticateAsync(smtpUser, smtpPassword);
+
+            // Отправка письма
+            await smtpClient.SendAsync(message);
+
+            // Отключение
+            await smtpClient.DisconnectAsync(true);
+
+            _snackBar?.Add("Отправлено", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _snackBar?.Add(ex.ToString(), Severity.Warning);
+        }
+    }
+
+    private void CheckAdminCode()
+    {
+        if (AdminCode == DefaultAdminCode)
+        {
+            AdminCodeAccepted = true;
+            _snackBar?.Add("Код администратора принят.", Severity.Success);
+        }
+        else
+        {
+            AdminCodeAccepted = false;
+            _snackBar?.Add("Код администратора не принят.", Severity.Warning);
+        }
+    }
+}

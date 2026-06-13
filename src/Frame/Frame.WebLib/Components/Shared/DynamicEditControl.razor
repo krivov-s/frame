@@ -1,0 +1,441 @@
+﻿@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.Domain.Params
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Forms
+
+@if (_error != "")
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_valueType != null)
+{
+    if (_valueType == typeof(string))
+    {
+        if (StringValuesList.Count > 0)
+        {
+            <MudSelect  T="string"
+                        Label="@Label"
+                        Value="@Convert.ToString(_value)"
+                        Style="@Style"
+                        Clearable="true"
+                        ValueChanged="newValue => OnValueChanged(newValue)">
+                @foreach (string val in StringValuesList)
+                {
+                    <MudSelectItem Value="@val">@val</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudTextField T="string"
+                          Label="@Label"
+                          Style="@Style"
+                          Value="@Convert.ToString(_value)"
+                          ValueChanged="newValue => OnValueChanged(newValue)" />
+        }
+    }
+    else if (_valueType == typeof(int))
+    {
+        <MudTextField T="int?"
+                      Label="@Label"
+                      Style="@Style"
+                      Value="@Convert.ToInt32(_value)"
+                      ValueChanged="newValue => OnValueChanged(newValue)" />
+    }
+    else if (_valueType == typeof(DateTime))
+    {
+        <MudTextField T="DateTime?"
+                      Label="@Label"
+                      Format="dd.MM.yyyy HH:mm:ss"
+                      Style="@Style"
+                      Value="@Convert.ToDateTime(_value)"
+                      ValueChanged="newValue => OnValueChanged(newValue)" />
+    }
+    else if (_valueType == typeof(DateOnly))
+    {
+        <MudDatePicker Date="@ConvertToDateTime(_value)"
+                       DateFormat="dd.MM.yyyy" Placeholder="Выберите дату"
+                       Style="@Style"
+                       Editable="true"
+                       DateChanged="newValue => OnValueChanged(ConvertToDateOnly(newValue))"
+                       Label="@Label"/>
+    }
+    else if (_valueType == typeof(bool))
+    {
+        <MudSwitch T="bool"
+                   Label="@Label"
+                   Value="@Convert.ToBoolean(_value)"
+                   Style="@Style"
+                   Color="Color.Primary"
+                   UncheckedColor="Color.Default"
+                   ValueChanged="newValue => OnValueChanged(newValue)" />
+
+    }
+    else if (_valueType == typeof(decimal))
+    {
+        <MudTextField T="decimal?"
+                      Label="@Label"
+                      Value="@Convert.ToDecimal(_value)"
+                      ValueChanged="newValue => OnValueChanged(newValue)" 
+                      Style="@Style"/>
+    }
+    else if (_valueType == typeof(FileParam))
+    {
+        <MudStack Row="true">
+            <MudFileUpload T="IBrowserFile" FilesChanged="_uploadFileAsync">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                               class="ma-1 mt-3">
+                        @Label
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>        
+            <MudText Typo="Typo.body1">
+                @if (Value is FileParam fp)
+                {
+                    @fp.FileName
+                }
+            </MudText>
+        </MudStack>
+    }
+    else if (_valueType.IsSubclassOf(typeof(BaseEntity)))
+    {
+        <MudSelect T="BaseEntity"
+                   Label="@Label"
+                   Text="@_valueEntity?.Description"
+                   Value="_valueEntity"
+                   ValueChanged="v => OnEntityValueChanged(v)"
+                   Clearable="true"
+                   Style="@Style">
+            @{
+                if (_entitiesList.Count > 0)
+                {
+                    foreach (BaseEntity baseEntity in _entitiesList)
+                    {
+                        string display = RefDisplayValueGetter != null
+                            ? RefDisplayValueGetter(baseEntity)
+                            : baseEntity.Description;
+                        <MudSelectItem T="BaseEntity" Value="@baseEntity">@display</MudSelectItem>
+                    }
+                }
+            }
+        </MudSelect>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Warning">Неизвестный тип значения: @_valueType.Name</MudAlert>
+    }
+}
+
+@code {
+    [Inject] private IObjectStorageProvider? _objectStorageProvider { get; set; }
+
+    [CascadingParameter] private IObjectStorage? _sharedObjectStorage { get; set; }
+    
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Style { get; set; }
+    
+    /// <summary>
+    /// При изменении значения тип (если уже установлен) не меняется
+    /// </summary>
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public EventCallback<object?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Тип значения. Если не установлен - тип берется из Value
+    /// </summary>
+    [Parameter] public Type? ValueType { get; set; }
+
+    /// <summary>
+    /// Ограничение на список значений, в случае если <see cref="ValueType"/> это <see cref="BaseEntity"/>
+    /// </summary>
+    [Parameter] public string Where { get; set; } = "";
+
+    /// <summary>
+    /// Сортировка значений, в случае если <see cref="ValueType"/> это <see cref="BaseEntity"/>
+    /// </summary>
+    [Parameter] public string OrderBy { get; set; } = "";
+
+    /// <summary>
+    /// Список допустимых значений для строковых данных (будет отображен MudSelect) 
+    /// </summary>
+    [Parameter] public List<string> StringValuesList { get; set; } = [];
+    
+    /// <summary>
+    /// Опциональная функция получения значений для отображение для списка RefEdit
+    /// </summary>
+    [Parameter] public Func<BaseEntity, string>? RefDisplayValueGetter { get; set; }
+
+    /// <summary>
+    /// Cписок допустимых значений для RefEdit. Если не указан - будет строиться динамический запрос
+    /// на основе <see cref="ValueType"/> с использованием Where и OrderBy
+    /// </summary>
+    //[Parameter] public Func<List<dynamic>>? RefEntitiesList { get; set; }
+    [Parameter] public List<dynamic>? RefEntitiesList { get; set; }
+    [Parameter] public EventCallback<List<dynamic>?> RefEntitiesListChanged { get; set; }
+    
+    private string _error = "";
+    private IObjectStorage? _objectStorage;
+    
+    private Type? _valueType { get; set; }
+    private object? _value { get; set; }
+    private List<dynamic> _entitiesList = [];
+    
+    /// <summary>
+    /// Объект для ситуаций, когда тип значения - Entity (потомки BaseEntity) 
+    /// </summary>
+    private BaseEntity? _valueEntity { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (_sharedObjectStorage != null)
+        {
+            _objectStorage = _sharedObjectStorage;
+        }
+        else
+        {
+            if (_objectStorageProvider != null)
+            {
+                IObjectStorage? value = _objectStorageProvider.GetObjectStorage().Value;
+                if (value != null)
+                {
+                    _objectStorage = value;
+                }
+            }
+        }
+    }
+
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     if (ValueType != null && ValueType.IsSubclassOf(typeof(BaseEntity)))
+    //     {
+    //         _entitiesList = await GetListAsync(ValueType);
+    //         if (_valueEntity != null)
+    //         {
+    //             _valueEntity = _entitiesList.FirstOrDefault(x => x.Id == _valueEntity.Id);
+    //         }
+    //     }
+    // }
+    //
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ValueType == null && Value == null)
+        {
+            _error = $"Должен быть задан или тип или значение";
+            return;
+        }
+
+        if (RefEntitiesList != null)
+        {
+            // await RefEntitiesListChanged.InvokeAsync(_entitiesList);
+            _entitiesList = RefEntitiesList;
+        }
+        
+        // Сначала проверяем изменение типа.
+        await ChangeTypeAsync(ValueType);
+
+        // Потом проверяем изменение значения
+        await ChangeValueAsync(Value);
+    }
+
+    private async Task ChangeValueAsync(object? newValue)
+    {
+        if (_value == newValue)
+        {
+            // Ничего не изменяется. Выходим
+            return;
+        }
+
+        // Записываем значение
+        _value = newValue;
+        
+        if (_value != null && _valueType == null) 
+        {
+            await ChangeTypeAsync(_value.GetType());
+        }
+
+        // Проверяем, если _valueType это Entity - нужно установить корректное значение _valueEntity 
+        if (_valueType != null && _valueType.IsSubclassOf(typeof(BaseEntity)))
+        {
+            if (_value != null)
+            {
+                if (_value is int id)
+                {
+                    // Если в значение был установлен int - считаем что это id записи 
+                    _valueEntity = _entitiesList.FirstOrDefault(x => x.Id == id);
+                }
+                else if (_value.GetType() == _valueType)
+                {
+                    // Если передан объект нужного типа - устанавливаем его в _valueEntity
+                    _valueEntity = _value as BaseEntity;
+                }
+                else
+                {
+                    // Если и не int и не _valueType - обнуляем _valueEntity 
+                    _valueEntity = null;
+                }
+            }
+        }
+    }
+    
+    private async Task ChangeTypeAsync(Type? newType)
+    {
+        if (_valueType == newType)
+        {
+            return;
+        }
+
+        _valueType = newType;
+        if (_valueType == null)
+        {
+            _entitiesList = [];
+            // await RefEntitiesListChanged.InvokeAsync(_entitiesList);
+            _valueEntity = null;
+            return;
+        }
+        
+        if (_valueType.IsSubclassOf(typeof(BaseEntity)))
+        {
+            // Тип изменился на BaseEntity
+            if (_value != null)
+            {
+                Type tCurrentValue = _value.GetType();
+                // Если тип текущего значения не новый BaseEntity и не int - обнуляемся.
+                if (tCurrentValue.IsClass)
+                {
+                    if (tCurrentValue != _valueType)
+                    {
+                        _value = null;
+                    }
+                }
+                else if (tCurrentValue != typeof(int))
+                {
+                    _value = null;
+                }
+            }
+
+            _entitiesList = await GetListAsync(_valueType);
+            // await RefEntitiesListChanged.InvokeAsync(_entitiesList);
+            _valueEntity = null;
+
+            // К этому моменту тип изменен. Нужно попробовать переустановить заново текущее значение
+            object? tmp = _value;
+            _value = null;
+            await ChangeValueAsync(tmp);
+        }
+        else
+        {
+            // Тип изменился на скалярный, список очищаем.
+            _entitiesList.Clear();
+            _valueEntity = null;
+
+            if (_value != null)
+            {
+                try
+                {
+                    // Делаем конверсию в новый заданный тип
+                    _value = Convert.ChangeType(_value, _valueType);
+                }
+                catch
+                {
+                    // В случае ошибки создаем новый экземпляр заданного типа 
+                    _value = Activator.CreateInstance(_valueType);                
+                }
+            }
+        }
+    }
+    
+    private async Task<List<dynamic>> GetListAsync(Type entityType)
+    {
+        if (RefEntitiesList != null) return RefEntitiesList;
+        
+        if (_objectStorage == null)
+        {
+            _error = "Не задан ObjectStorage";
+            return [];
+        }
+
+        SavedQuery savedQuery = new()
+        {
+            EntityType = entityType,
+            Where = Where,
+            OrderBy = OrderBy
+        };
+    
+        Result<List<dynamic>> resValues = await _objectStorage.GetDynamicListAsync(savedQuery);
+    
+        if (resValues.IsErrorOrNull)
+        {
+            _error = $"Ошибка при получения списка значений: {resValues.ErrorResult}";
+            return [];
+        }
+            
+        return resValues.Value!;
+    }
+
+    private async Task OnValueChanged<T>(T newValue)
+    {
+        _value = newValue;
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+    
+    private async Task OnEntityValueChanged<T>(T newValue)
+    {
+        _value = newValue;
+        Value = newValue;
+        _valueEntity = newValue as BaseEntity;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private DateTime? ConvertToDateTime(object? value)
+    {
+        if (value == null) return null;
+        
+        switch (value)
+        {
+            case DateTime dateTime:
+                return dateTime;
+            case DateOnly dateOnly:
+                return dateOnly.ToDateTime(new TimeOnly(0,0,0));
+        }
+
+        return null;
+    }
+    
+    private DateOnly? ConvertToDateOnly(DateTime? value)
+    {
+        if (value == null) return null;
+        return DateOnly.FromDateTime((DateTime)value);
+    }
+    
+    private async Task _uploadFileAsync(IBrowserFile? fileFromBrowser)
+    {
+        if(fileFromBrowser == null) return;
+        
+        try
+        {
+            using MemoryStream ms = new MemoryStream();
+            await using (Stream fileStream = fileFromBrowser.OpenReadStream(fileFromBrowser.Size))
+            {
+                await fileStream.CopyToAsync(ms);
+            }
+            ms.Position = 0;
+            FileParam value = new()
+            {
+                FileName = fileFromBrowser.Name,
+                FileData = ms.ToArray()
+            };
+            await OnValueChanged(value);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка загрузки файла: {ex.Message}";
+        }
+    }
+    
+}

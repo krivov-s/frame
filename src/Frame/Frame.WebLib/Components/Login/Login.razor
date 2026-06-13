@@ -1,0 +1,68 @@
+﻿@page "/login"
+
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Forms
+
+@* <MudPopoverProvider /> *@
+
+<PageTitle>Log in</PageTitle>
+
+<MudText Typo="Typo.h5">Login</MudText>
+
+<form method="post" @formname="testForm" action="@_actionPath">
+    <AntiforgeryToken />
+    <MudGrid>
+        @if (ErrorMessage is { Length: > 0 })
+        {
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Error">@ErrorMessage</MudAlert>
+            </MudItem>
+        }
+        <MudItem xs="12">
+            <MudTextField T="string" InputType="InputType.Text" id="username" name="username" Label="Имя пользователя" Variant="Variant.Outlined"></MudTextField>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" InputType="InputType.Password" id="userpass" name="userpass" Label="Пароль" Variant="Variant.Outlined"></MudTextField>
+        </MudItem>
+        <MudItem xs="12">
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto">Отправить</MudButton>
+        </MudItem>
+    </MudGrid>
+</form>
+
+@code{
+    [Inject] CoreWebSettings? _coreWebSettings { get; set; }
+    
+    [Parameter][SupplyParameterFromQuery] public string ErrorMessage { get; set; } = "";
+
+    private string _actionPath = "";
+    private string _errorMessage = "";
+    
+    protected override void OnInitialized()
+    {
+        if (_coreWebSettings == null)
+        {
+            _errorMessage = "Не удалось получить настройки системы. Продолжение невозможно!";
+            return;
+        }
+
+        _actionPath = $"{_coreWebSettings.BasePath}{_coreWebSettings.LoginControllerPath}";
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            if (_errorMessage is not (null or ""))
+            {
+                _errorMessage += $"; {ErrorMessage}";
+            }
+            else
+            {
+                _errorMessage = ErrorMessage;
+            }
+        }
+    }
+
+}

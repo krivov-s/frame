@@ -1,0 +1,116 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+@if (CurrentFilter != null)
+{
+    <EntitiesListDetail TEntity="SavedFilterGroupLink"
+                        TParentComponent="CF_SavedFilterGroups"
+                        Title="Список сохранённых фильтров"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        ShowEditButton="false"
+                        Entities="CurrentFilter.SavedFilterGroups"
+                        OnAddNewAsync="_addNewSavedFilterGroupLink">
+        <GridContent>
+            <PropertyColumn T="@SavedFilterGroupLink" TProperty="@string" Property="x => x.SavedFilterGroup != null ? x.SavedFilterGroup.Name : string.Empty" Title="@SavedFilterGroup.Meta.Name.HumanName"></PropertyColumn>
+        </GridContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public SavedFilter? CurrentFilter { get; set; }
+
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+
+    private SimpleEditForm<SavedFilterGroup, CF_SavedFilterGroups>? _formSavedFilterGroup { get; set; }
+
+    protected readonly Dictionary<string, EntitiesListOperation<SavedFilterGroupLink>> Commands = [];
+
+    private async Task<Result<SavedFilterGroupLink>> _addNewSavedFilterGroupLink(IBaseRepository<SavedFilterGroupLink>? repository)
+    {
+        Result<SavedFilterGroupLink> res = Result<SavedFilterGroupLink>.Success(null);
+        SavedFilter? report = (SavedFilter?)CurrentFilter;
+
+        if (_dialogService != null && repository != null && CurrentFilter != null)
+        {
+            try
+            {
+                IObjectStorage objectStorage = repository.ObjectStorage;
+
+                DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+                DialogParameters<SelectDialog<SavedFilterGroup>> parameters = new DialogParameters<SelectDialog<SavedFilterGroup>>();
+
+                Result<List<SavedFilterGroup>> resRole = await objectStorage.GetListAsync<SavedFilterGroup>("Чтение всех групп");
+                if (resRole.IsErrorOrNull)
+                {
+                    _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+                    return res;
+                }
+
+                List<SavedFilterGroup> filters = resRole.Value!;
+                if (filters.Count == 0)
+                {
+                    _snackBar?.Add("Не найдены группы для добавления", Severity.Info);
+                    return res;
+                }
+
+                var excludedIDs = new HashSet<int>(CurrentFilter.SavedFilterGroups.Select(p => p.SavedFilter!.Id));
+                var groupsClean = filters.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+                if (groupsClean.Count > 0)
+                {
+                    parameters.Add(x => x.Items, groupsClean);
+                    var dialog = await _dialogService.ShowAsync<SelectDialog<SavedFilterGroup>>("Выберите группу", parameters, options);
+                    var result = await dialog.Result;
+                    if (result is { Canceled: false })
+                    {
+                        SavedFilterGroup? group = (SavedFilterGroup?)result.Data;
+                        if (group != null)
+                        {
+                            SavedFilterGroupLink rel = new()
+                            {
+                                SavedFilterGroupId = group.Id,
+                                SavedFilterGroup = group,
+                                SavedFilterId = CurrentFilter.Id,
+                                SavedFilter = CurrentFilter
+                            };
+                            CurrentFilter.SavedFilterGroups.Add(rel);
+                            objectStorage.Add(rel);
+                            _compositeFormState?.SetDirty(true);
+                            return Result<SavedFilterGroupLink>.Success(rel);
+                        }
+                    }
+                }
+                else
+                {
+                    _snackBar?.Add($"Отсутствуют группы для добавления", Severity.Info);
+                }
+            }
+            catch (Exception exc)
+            {
+                var daatt = exc;
+            }
+
+            return res;
+        }
+        else
+        {
+            _snackBar?.Add($"Отсутствуют сохранённые фильтры для добавления", Severity.Info);
+        }
+        return res;
+    }
+}
+

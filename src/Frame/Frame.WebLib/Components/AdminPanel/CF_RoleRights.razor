@@ -1,0 +1,38 @@
+﻿@using Frame.App.Cores
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+
+@if (CurrentRole != null)
+{
+    <EntitiesListDetail TEntity="TEntityRights"
+                        TParentComponent="CF_RoleRights"
+                        Title="Права доступа"
+                        Entities="CurrentRole.EntityRights"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        OnBeforeEditFormContent="(rr, _) => {rr.Role = CurrentRole; rr.RoleId = CurrentRole.Id; }">
+        <GridContent>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.EntityTypeName" Title="@TEntityRights.Meta.EntityTypeName.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.ReadQueryFilter" Title="@TEntityRights.Meta.ReadQueryFilter.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.ViewTLS" Title="@TEntityRights.Meta.ViewTLS.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.CreateTLS" Title="@TEntityRights.Meta.CreateTLS.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.ModifyTLS" Title="@TEntityRights.Meta.ModifyTLS.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@string" Property="x => x.DeleteTLS" Title="@TEntityRights.Meta.DeleteTLS.HumanName"></PropertyColumn>
+            <PropertyColumn T="@TEntityRights" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+        </GridContent>
+
+        <FormContent>
+            <CF_EntityRights EntityRights="context"/>
+        </FormContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] IUserCore? _userCore { get; set; }
+
+    [Parameter] public Role? CurrentRole { get; set; }
+
+}

@@ -1,0 +1,145 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h5" Align="Align.Left">Роль @_role?.Name</MudText>
+                <MudDivider />
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (_role != null)
+            {
+                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                    <MudTabPanel Text="Параметры">
+                        <SimpleEditForm @ref="_formRole"
+                                        TEntity="Role"
+                                        TParentComponent="CF_Role"
+                                        Entity="_role"
+                                        ShowTitle="false">
+                            @if (_formRole != null)
+                            {
+                                <MudGrid>
+                                    <MudItem xs="12" sm="12">
+                                        <MudStack Row="false">
+                                            <FieldEditFactory TEntity="Role" Entity="_role" Field="Role.Meta.Name"/>
+                                            <FieldEditFactory TEntity="Role" Entity="_role" Field="Role.Meta.Descr"/>
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            }
+                        </SimpleEditForm>
+                    </MudTabPanel>
+                    @if (_role.Id > 0)
+                    {
+                        <MudTabPanel Text="Утверждения (Claims)">
+                            <EntitiesListDetail TEntity="RoleClaim"
+                                                TParentComponent="CF_Role"
+                                                Title="Список требований"
+                                                Entities="_role.RoleClaims"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnBeforeEditFormContent="(claim, _) => {claim.Role = _role; claim.RoleId = _role.Id; }">
+
+                                <GridContent>
+                                    <PropertyColumn T="@RoleClaim" TProperty="@string" Property="x => x.ClaimType" Title="@RoleClaim.Meta.ClaimType.HumanName"/>
+                                    <PropertyColumn T="@RoleClaim" TProperty="@string" Property="x => x.ClaimValue" Title="@RoleClaim.Meta.ClaimValue.HumanName"/>
+                                    <PropertyColumn T="@RoleClaim" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+                                </GridContent>
+                                
+                                <FormContent>
+                                    <CF_RoleClaim FormObject="context" />
+                                </FormContent>
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Пользователи">
+                            <CF_RoleUsers CurrentRole="_role"></CF_RoleUsers>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Права доступа">
+                            <CF_RoleRights CurrentRole="_role"></CF_RoleRights>
+                        </MudTabPanel>
+                    }
+                </MudTabs>
+            }
+        </MudCardContent>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+
+    [Parameter] public int id { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _getCurrentUserService { get; set; }
+    [Inject] private ILogger<CF_Role>? _logger { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+    private Role? _role { get; set; }
+    private bool _isAuthorized;
+
+    private SimpleEditForm<Role, CF_Role>? _formRole { get; set;}
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_getCurrentUserService, _logger, _snackBar);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if(_isAuthorized )
+        {
+            if (id != 0)
+            {
+                await _loadRoleAsync(id);
+            }
+            else
+            {
+                _role = new Role();
+            }
+        }
+
+        await base.OnParametersSetAsync();
+    }
+    
+    private async Task _loadRoleAsync(int roleId)
+    {
+        if (SharedObjectStorage == null)
+        {
+            string err = "Отсутствует IObjectStorage";
+            _logger?.LogError("{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+            return;
+        }
+
+        Result<Role> resRole = await SharedObjectStorage.GetObjAsync<Role>(roleId, spec => spec
+            .Include(u => u.RoleClaims)
+            .Include(u => u.UsersRoles).ThenInclude(x => x.User)
+            .Include(u => u.EntityRights)
+            .Build()
+        );
+
+        if (resRole.IsErrorOrNull)
+        {
+            _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+            return;
+        }
+
+        _role = resRole.Value;
+    }
+}

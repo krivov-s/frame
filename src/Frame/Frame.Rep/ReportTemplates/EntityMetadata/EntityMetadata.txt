@@ -1,0 +1,37 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.Extensions.Logging;
+using Frame.Shared;
+using Frame.Domain.Entities.Core;
+using Frame.Domain.Entities.Core.Params;
+using Frame.Domain.Entities.Test;
+using Frame.Domain.Entities.Core.Security;
+using Frame.Domain.Params;
+using Frame.App;
+using Frame.App.Scripting;
+using Frame.App.Cores;
+using Frame.App.IEntityRepositories;
+using VSPassport.Domain.Entities;
+using VSPassport.Domain.Entities.Acc;
+using VSPassport.Domain.Entities.Nsi;
+using VSPassport.Domain.Entities.REObj;
+using VSPassport.Domain.Entities.RERent;
+using VSPassport.Domain.Entities.RERepairs;
+using VSPassport.Domain.Entities.Sec;
+using VSPassport.Domain.Entities.SelfService;
+using Frame.Rep.DataSourceServices;
+
+#nullable enable
+
+public class MyScriptDataSource : IScriptCommandDataSource
+{
+    public async Task<Result<List<dynamic>>> ExecuteAsync(AppCore appCore, ParamList? paramList = null, List<dynamic>? entities = null, IObjectStorage? storage = null)
+    {
+        List<dynamic> listMeta = EntityMetadataDataSourceService.GetEntityMetadataList(paramList);
+        string msg = $"Кол-во записей в списке метаданных: {listMeta.Count}";
+        appCore.Logger.LogInformation(msg);
+        return Result<List<dynamic>>.SuccessWithMessage(listMeta, msg);
+    }
+}

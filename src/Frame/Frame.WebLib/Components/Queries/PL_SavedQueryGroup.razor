@@ -1,0 +1,35 @@
+﻿@page "/saved_query_group_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+
+<PageTitle>Список сохранённых запросов</PageTitle>
+
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="SavedQueryGroup"
+                    TParentComponent="PL_SavedQueryGroup"
+                    Title="Список групп сохранённых запросов"
+                    ConfigureQuerySpecification="spec => spec
+                        .Include(x => x.SavedQueries)
+                        .ThenInclude(x => x.SavedQuery)
+                        .OrderByAsc(u => u.Id)"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@SavedQueryGroup" TProperty="@string" Property="x => x.Name" Title="@SavedQueryGroup.Meta.Name.HumanName" Editable="true" Required="SavedQueryGroup.Meta.Name.Required" />
+        <PropertyColumn T="@SavedQueryGroup" TProperty="@string" Property="x => x.Description" Title="@SavedQueryGroup.Meta.Descr.HumanName" Editable="true" Required="SavedQueryGroup.Meta.Descr.Required" />
+        <PropertyColumn T="@SavedQueryGroup" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <CF_SavedQueryGroupQueries FormObject="context"></CF_SavedQueryGroupQueries>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+
+}

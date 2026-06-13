@@ -1,0 +1,199 @@
+﻿@using System.Collections
+@using System.Reflection
+@using Frame.Domain.Entities.Core
+@using Frame.Shared
+@using Microsoft.Extensions.Logging
+
+<MudDialog>
+    @* <TitleContent> *@
+    @*     <MudText Typo="Typo.h6">Типы объектов системы</MudText> *@
+    @*     <MudDivider /> *@
+    @* </TitleContent> *@
+    <DialogContent>
+        <MudTreeView T="PropertyData"
+                     Items="@_treeItems"
+                     SelectionMode="SelectionMode.MultiSelection"
+                     @bind-SelectedValues="_selectedValues">
+            <ItemTemplate>
+                <MudTreeViewItem @bind-Expanded="@context.Expanded"
+                                 Items="@context.Children"
+                                 Value="@context.Value"
+                                 Icon="@context.Icon"
+                                 Text="@context.Text"
+                                 EndText="@context.Value?.MetaField.Name"
+                                 EndTextTypo="@Typo.caption"/>
+            </ItemTemplate>
+        </MudTreeView>
+        @if (ShowSelectedAttrs)
+        {
+            <MudTextField Value="_selectedValuesAsString" 
+                          Label="Выбранные поля"
+                          Variant="Variant.Outlined"
+                          MaxLines="3"
+                          AutoGrow="true"
+                          class="ma-3"/>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (ShowSaveButton)
+        {
+            <MudButton Color="Color.Error" OnClick="SubmitAsync">@SaveButtonText</MudButton>
+        }
+        @if (ShowCancelButton)
+        {
+            <MudButton OnClick="Cancel">@CancelButtonText</MudButton>
+        }
+    </DialogActions>    
+</MudDialog>
+
+@code {
+    [Inject] private ILogger<AttrTreeDialog>? _logger { get; set; }
+ 
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+    
+    /// <summary>
+    /// Максимальная глубина вложенности при разворачивании дерева объектов
+    /// </summary>
+    [Parameter] public int MaxDepth { get; set; } = 3;
+    
+    /// <summary>
+    /// Начальный тип, с которого начинается разворачивание дерева
+    /// </summary>
+    [Parameter] public Type? EntityType { get; set; }
+    //[Parameter] public bool ClassesOnly { get; set; }
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    [Parameter] public bool ShowSelectedAttrs { get; set; }
+    [Parameter] public string SaveButtonText { get; set; } = "Выбрать";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+    
+    /// <summary>
+    /// Коллекция объектов <see cref="PropertyData"/> с отмеченными атрибутами 
+    /// </summary>
+    [Parameter] public IReadOnlyCollection<PropertyData> SelectedAttrs { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyCollection<PropertyData>> SelectedAttrsChanged { get; set; }
+    
+    // /// <summary>
+    // /// Строка с выбранными значениями атрибутов 
+    // /// </summary>
+    // [Parameter] public string SelectedValue { get; set; } = "";
+    // [Parameter] EventCallback<string> SelectedValueChanged { get; set; }
+    
+    private List<TreeItemData<PropertyData>> _treeItems { get; set; } = [];
+    private IReadOnlyCollection<PropertyData> _selectedValues { get; set; } = [];
+    private string _selectedValuesAsString => string.Join(", ", _selectedValues);
+    
+    protected override void OnParametersSet()
+    {
+        if (EntityType != null)
+        {
+            _treeItems = InitTreeItems(0, EntityType, null);
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        SelectedAttrs = _selectedValues;
+        await SelectedAttrsChanged.InvokeAsync(SelectedAttrs);
+        _mudDialog?.Close(DialogResult.Ok(SelectedAttrs));
+    }
+
+    private void Cancel()
+    {
+        _mudDialog?.Cancel();
+    }    
+    
+    // private async Task OnSelectedValuesChangedAsync()
+    // {
+    //     SelectedValue = string.Join(',', _selectedValues);
+    //     await SelectedValueChanged.InvokeAsync(SelectedValue);
+    // }
+    
+    private List<TreeItemData<PropertyData>> InitTreeItems(int currentDepth, Type? type, PropertyData? parent)
+    {
+        List<TreeItemData<PropertyData>> treeItemList = [];
+        
+        if (currentDepth > MaxDepth) return treeItemList;
+        if (type == null) return treeItemList;
+
+        var instance = Activator.CreateInstance(type);
+        MethodInfo? methodGetFields = type.GetMethod("GetFields");
+        if (methodGetFields == null)
+        {
+            string err = $"Reflection: не удалось получить метод IBaseGenericEntity<{type.Name}>.GetFields";
+            _logger?.LogError(err);
+            return treeItemList;
+        }
+        
+        // Список полей из метаданных переданного типа type (класс Meta)
+        var fields = methodGetFields.Invoke(instance, null);
+        IList? listTmp = fields as IList;
+        if (listTmp == null)
+        {
+            string err = $"Meta: не удалось получить список полей вызовом IBaseGenericEntity<{type.Name}>.GetFields";
+            _logger?.LogError(err);
+            return treeItemList;
+        }
+        List<IField> listFieldsFromMeta = listTmp.Cast<IField>().OrderBy(f => f.HumanName).ToList();
+
+        foreach (IField metaField in listFieldsFromMeta)
+        {
+            PropertyInfo? prop = type.GetProperty(metaField.Name);
+            if (prop == null)
+            {
+                string err = $"Не удалось получить свойство {type.Name}.{metaField.Name}";
+                _logger?.LogError(err);
+                continue;
+            }
+            
+            PropertyData newData = new (
+                metaField,
+                prop.PropertyType,
+                (parent != null) ? string.Join('.', [parent.AttrPath, prop.Name]) : prop.Name,
+                parent,
+                prop.PropertyType.IsNullable()
+            );
+            
+            TreeItemData<PropertyData> newItem = new()
+            {
+                Text = $"{metaField.HumanName}",
+                Value = newData,
+            };
+
+            if (metaField.FieldType == EntityFieldType.Ref)
+            {
+                newItem.Children = InitTreeItems(currentDepth + 1, prop.PropertyType, newData);
+            }
+            
+            treeItemList.Add(newItem);
+        }
+        
+        return treeItemList;
+    }
+    
+
+    public class PropertyData(IField metaField, Type propertyType, string attrPath, PropertyData? parent, bool isNullable)
+        : IEquatable<PropertyData>
+    {
+        public IField MetaField { get; set; } = metaField;
+        public Type PropertyType { get; set; } = propertyType;
+        public string AttrPath { get; init; } = attrPath;
+        public PropertyData? Parent { get; set; } = parent;
+        public bool IsNullable { get; set; } = isNullable;
+
+        public bool Equals(PropertyData? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return AttrPath == other.AttrPath;
+        }
+        
+        public override bool Equals(object? obj) => ReferenceEquals(this, obj) || obj is PropertyData other && Equals(other);
+        public override int GetHashCode() => AttrPath.GetHashCode();
+        public override string ToString()
+        {
+            return AttrPath;
+        }
+    }
+}

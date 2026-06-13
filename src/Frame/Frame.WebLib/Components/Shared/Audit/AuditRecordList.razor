@@ -1,0 +1,96 @@
+﻿@page "/audit/{EntityType}/{EntityId:int}"
+@page "/audit"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.App.IEntityRepositories
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Domain.QuerySpec
+
+<MudSnackbarProvider />
+
+<PageTitle>Аудит - список</PageTitle>
+
+<EntitiesListDetail TEntity="AuditRecord" 
+                    TParentComponent="AuditRecordList"
+                    Title="@Title"
+                    EditEntityUri="auditrecord/{Entity.Id}"
+                    ShowAddButton="false"
+                    ShowDeleteButton="false"
+                    ShowEditButton="true"
+                    TooltipEditButton="Просмотр детальных сведений"
+                    ConfigureQuerySpecification="_configureQuerySpecification"
+                    EditMode="EntitiesListEditMode.ExternalUri">
+
+    <GridContent>
+        <PropertyColumn T="@AuditRecord" TProperty="@DateTime" Property="x => x.RecordDateTime" Title="@AuditRecord.Meta.RecordDateTime.HumanName"></PropertyColumn>
+        <PropertyColumn T="@AuditRecord" TProperty="@string" Property="x => x.UserName" Title="@AuditRecord.Meta.UserName.HumanName"></PropertyColumn>
+        <PropertyColumn T="@AuditRecord" TProperty="@string" Property="x => x.Action" Title="@AuditRecord.Meta.Action.HumanName"></PropertyColumn>
+        @if (string.IsNullOrEmpty(EntityType) || EntityId is not > 0 )
+        {
+            <PropertyColumn T="@AuditRecord" TProperty="@string" Property="x => x.EntityType" Title="@AuditRecord.Meta.EntityType.HumanName"></PropertyColumn>
+            <PropertyColumn T="@AuditRecord" TProperty="@int" Property="x => x.EntityId" Title="@AuditRecord.Meta.EntityId.HumanName"></PropertyColumn>
+        }
+    </GridContent>
+</EntitiesListDetail>
+
+
+@code {
+    /// <summary>
+    /// Тип объекта, аудит которого требуется отобразить
+    /// </summary>
+    [Parameter] 
+    [SupplyParameterFromQuery]
+    public string? EntityType { get; set; } = "";
+    /// <summary>
+    /// Идентификатор объекта, аудит которого требуется отобразить
+    /// </summary>
+    [Parameter] 
+    [SupplyParameterFromQuery]
+    public int? EntityId { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string? UserLogin { get; set; }    
+    
+    private string Title = "Аудит";
+    const int MAX_REC_COUNT = 5000;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(UserLogin))
+        {
+            Title = $"Аудит действий пользователя {UserLogin}";
+        }
+        else if (EntityType is { Length: > 0 } && EntityId is > 0)
+        {
+            Title = $"Аудит объекта {EntityType}, Id: {EntityId}";
+        }
+        else
+        {
+            Title = $"Аудит. Считывается не более {MAX_REC_COUNT} записей";
+        }
+        base.OnParametersSet();
+    }
+
+    private IQuerySpecification<AuditRecord> _configureQuerySpecification(IQuerySpecification<AuditRecord> spec)
+    {
+        if (!string.IsNullOrEmpty(UserLogin))
+        {
+            spec = spec.Where(ar => ar.UserName == UserLogin).OrderByDesc(x => x.RecordDateTime);
+        }
+        else if (EntityType is { Length: > 0 } && EntityId > 0)
+        {
+            spec = spec.Where(ar => ar.EntityId == EntityId && ar.EntityType == EntityType).OrderByDesc(x => x.RecordDateTime);
+        }
+        else
+        {
+            spec = spec.Take(MAX_REC_COUNT).OrderByDesc(x => x.RecordDateTime);
+        }
+
+        return spec;
+    }
+    
+}

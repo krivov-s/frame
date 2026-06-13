@@ -1,0 +1,112 @@
+﻿@using Blazor.AceEditorJs
+@using Frame.App.Scripting
+@using Frame.Shared
+
+<MudDialog>
+    <DialogContent>
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3">
+            <MudTabPanel Text="Код">
+                <CodeEditor @bind-Value="_code"
+                            Language="@Language"
+                            Theme="Theme"
+                            ShowLanguageList="ShowLanguageList"
+                            ShowThemeList="ShowThemeList"/>
+            </MudTabPanel>
+            @if (ShowCompileButton)
+            {
+                <MudTabPanel Text="Результат компиляции">
+                    <CodeEditor @bind-Value="_compileLog"
+                                Language="AceLanguage.text"
+                                Theme="Theme"
+                                ShowLanguageList="false"
+                                ShowThemeList="false"/>
+                </MudTabPanel>
+            }
+        </MudTabs>
+    </DialogContent>
+    <DialogActions>
+        <MudStack Row="true">
+            @if (ShowCompileButton && _scriptCore != null && Language == AceLanguage.csharp && _code.Length > 0)
+            {
+                if (_compileLog.Length > 0)
+                {
+                    if (_compileLog == CompileSuccessful)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.DoneOutline" Color="Color.Success" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" />
+                    }
+                }
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CompileCode">@CompileButtonText</MudButton>
+            }
+            @if (ShowSaveButton)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync">@SaveButtonText</MudButton>
+            }
+            @if (ShowCancelButton)
+            {
+                <MudButton Variant="Variant.Filled" OnClick="Cancel">@CancelButtonText</MudButton>
+            }
+        </MudStack>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+
+    [Inject] private IScriptCore? _scriptCore { get; set; } 
+    
+    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public EventCallback<string> CodeChanged { get; set; }
+    
+    // [Parameter] public string Style { get; set; } = "height:60vh";
+    [Parameter] public AceLanguage Language { get; set; } = AceLanguage.csharp;
+    [Parameter] public AceTheme Theme { get; set; } = AceTheme.textmate;
+    [Parameter] public bool ShowLanguageList { get; set; }
+    [Parameter] public bool ShowThemeList { get; set; }
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    /// <summary>
+    /// Показать кнопку компиляции скрипта. Будет активна только для языка CSharp. 
+    /// </summary>
+    [Parameter] public bool ShowCompileButton { get; set; }
+    
+    [Parameter] public string SaveButtonText { get; set; } = "Сохранить";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+    [Parameter] public string CompileButtonText { get; set; } = "Компиляция";
+
+    // private CodeEditor? _codeEditor { get; set; }
+    private string _code { get; set; } = "";
+    private string _compileLog { get; set; } = "";
+
+    public const string CompileSuccessful = "Успешно";
+
+    protected override void OnInitialized()
+    {
+        _code = Code;
+        base.OnInitialized();
+    }
+
+    private void CompileCode()
+    {
+        if (_scriptCore == null) return;
+        
+        Result res = _scriptCore.CompileCode(_code);
+        _compileLog = res.IsError ? res.ErrorResult : CompileSuccessful;
+    }
+    
+    private async Task SubmitAsync()
+    {
+        Code = _code;
+        await CodeChanged.InvokeAsync(Code);
+        _mudDialog?.Close(DialogResult.Ok(Code));
+    }
+
+    private void Cancel()
+    {
+        _mudDialog?.Cancel();
+    }    
+    
+}

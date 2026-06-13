@@ -1,0 +1,216 @@
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core;
+@using Frame.Domain.Entities.Core.Scheduler
+@using Frame.Shared
+
+@* Тип основного объекта, для одного из атрибутов которого создается CronTemplateEditor *@
+@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+
+@if (Entity != null && Field != null)
+{
+    <MudTextField T="string"
+                  Variant="@Variant"
+                  Immediate="true"
+                  Label="@Field.HumanName"
+                  Disabled="@(Disabled || !_canModify)"
+                  ReadOnly="@(ReadOnly || !_canModify)"
+                  Format="@Field.GetDefaultFormat()"
+                  HelperText="@Field.HelperText"
+                  Value="@Field.GetValueFromEntity(Entity, "")"
+                  ValueChanged="@((string value) =>
+                                {
+                                    Field.SetValueToEntity(Entity, value); 
+                                    ValueChanged.InvokeAsync(value);
+                                })" 
+                  Adornment="Adornment.End"
+                  AdornmentIcon="@Icons.Material.Filled.AddCircleOutline"
+                  AdornmentColor="Color.Info"
+                  OnAdornmentClick="_openDialogAsync"
+                  Clearable="true"
+                  OnClearButtonClick="_clear"
+                  ondblclick="@(async () => await _openDialogAsync())"/>
+}
+else
+{
+    <MudAlert Severity="Severity.Warning">Компонент не сконфигурирован корректно!</MudAlert>
+}
+
+
+@code {
+    #region ==================== Внешние сервисы ====================
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] protected IObjectStorageProvider? _objectStorageProvider { get; set; }
+    #endregion
+    
+    /// <summary>
+    /// Значение параметра определяет, доступно ли поле для редактирования.
+    /// Должно быть установлено формой, в которую входит поле.
+    /// Обычно это делается в <see cref="SimpleEditForm{TEntity,TParentComponent}"/>
+    /// </summary>
+    [CascadingParameter(Name="CanModify")] bool _canModify { get; set; }
+    
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+
+    /// <summary>
+    /// Основной объект, в котором изменяется атрибут
+    /// </summary>
+    [Parameter] public TEntity? Entity { get; set; }
+    
+    /// <summary>
+    /// Поле объекта, в котором нужно отредактировать Cron expression
+    /// </summary>
+    [Parameter] public Field<TEntity>? Field { get; set; }
+
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public CronExpression? Value { get; set; }
+    //[Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+
+    
+    protected IObjectStorage? _objectStorage { get; set; }
+    protected IObjectStorage? ActiveObjectStorage
+    {
+        get
+        {
+            if (_objectStorage == null)
+            {
+                if (_sharedObjectStorage != null)
+                {
+                    _objectStorage = _sharedObjectStorage;
+                }
+                     
+                // Если к этому моменту не удалось инициализировать ObjectStorage - получаем его от DI
+                if (_objectStorage == null && _objectStorageProvider != null)
+                {
+                    Result<IObjectStorage> res = _objectStorageProvider.GetObjectStorage();
+                    if (res is { IsError: false, Value: not null })
+                    {
+                        _objectStorage = res.Value;
+                    }
+                }
+            }
+            return _objectStorage;
+        }
+        set => _objectStorage = value;
+    }
+    
+    protected override void OnInitialized()
+    {
+        if(_sharedObjectStorage == null)
+        {
+            _snackBar?.Add("Ошибка конфигурирования: не задан каскадный параметр SharedObjectStorage", Severity.Error);
+            return;
+        }
+
+        base.OnInitialized();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Value == null && Entity != null && Field != null && ActiveObjectStorage != null)
+        {
+            string expression = Field.GetValueFromEntity(Entity, "") ?? "";
+            if (expression != "")
+            {
+                Result<CronExpression> resExpr = await ActiveObjectStorage.GetObjAsync<CronExpression>(
+                    spec => spec.Where(x => x.Expression == expression));
+                if (!resExpr.IsErrorOrNull)
+                {
+                    Value = resExpr.Value;
+                }
+            }
+        }
+    }
+
+    private async Task _openDialogAsync()
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        if (_dialogService != null && ActiveObjectStorage != null && _snackBar != null)
+        {
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<CronExpression>> parameters = new DialogParameters<SelectDialog<CronExpression>>();
+            
+            Result<List<CronExpression>> resList = await ActiveObjectStorage
+                .GetListAsync<CronExpression>(null, "Получение списка CronExpression");
+            if (resList is { IsError: false, Value: not null })
+            {
+                List<CronExpression> list = resList.Value;
+                
+                parameters.Add(x => x.Items, list);
+                parameters.Add(x => x.SelectedObject, Value);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<CronExpression>>(
+                    "Справочник выражений для Cron", parameters, options);
+                var r = await dialog.Result;
+                
+                if (r is { Canceled: false })
+                {
+                    CronExpression? selectedCron = (CronExpression?)r.Data;
+                    if (selectedCron != null)
+                    {
+                        Value = selectedCron;
+                        await OnValueChanged(selectedCron);
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task OnValueChanged(CronExpression? selectedCron)
+    {
+        Value = selectedCron;
+        if (Entity != null && Field != null)
+        {
+            // Читаем значение из объекта. Из только что установленного Entity не читаем, поскольку в объекте что-то могло и измениться.
+            if (selectedCron != null)
+            {
+                // Устанавливаем новое значение в объект
+                Field.SetValueToEntity(Entity, selectedCron.Expression);
+                Text = selectedCron.Expression;
+            }
+            else
+            {
+                Field.SetValueToEntity(Entity, ""); 
+                Text = "";
+            }
+
+            await ValueChanged.InvokeAsync();
+            StateHasChanged();
+        }
+        //await ValueChanged.InvokeAsync(selectedEntity);
+    }
+    
+    private async Task _clear()
+    {
+        await OnValueChanged(null);
+        Text = "";
+    }
+    
+    /// <summary>
+    /// Значение, которое отображается пользователю
+    /// </summary>
+    public string Text
+    {
+        get
+        {
+            if (Entity != null && Field != null)
+            {
+                _text = Field.GetValueFromEntity(Entity, "") ?? "";
+            }
+            return _text;
+        }
+        set => _text = value;
+    }
+
+    private string _text = "";
+
+}

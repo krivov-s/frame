@@ -1,0 +1,138 @@
+﻿@using System.ComponentModel.DataAnnotations
+@using Blazor.AceEditorJs
+
+<MudGrid>
+    @if (ShowLanguageList || ShowThemeList)
+    {
+        <MudItem xs="12" sm="3">
+            @if (ShowLanguageList)
+            {
+                <MudSelect T="AceLanguage"
+                           Label="Язык"
+                           Value="_opt.Language"
+                           ValueChanged="OnLanguageChanged"
+                           Required="true">
+                    <MudSelectItem Value="AceLanguage.csharp">C#</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.fsharp">FSharp</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.html">HTML</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.javascript">JavaScript</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.json">JSON</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.json5">JSON5</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.log">Log</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.markdown">Markdown</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.pgsql">pgSQL</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.sql">SQL</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.text">Text</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.xml">XML</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.xquery">XQuery</MudSelectItem>
+                    <MudSelectItem Value="AceLanguage.yaml">YAML</MudSelectItem>
+                </MudSelect>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            @if(ShowThemeList)
+            {
+                <MudSelect T="AceTheme"
+                           Label="Тема"
+                           Value="_opt.Theme"
+                           ValueChanged="OnThemeChanged"
+                           Required="true">
+                    @foreach (var item in _themes)
+                    {
+                        <MudSelectItem Value="@item.Value">@item.Text</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudItem>
+        <MudFlexBreak/>
+    }
+    <MudItem xs="12" sm="12">
+        <MudPaper  Class="@ClassVisible">
+            @* Style="@Style" *@
+        <AceJsEditor @ref="_aceJsEditor"
+                     Value="@_currentValue"
+                     ValueChanged="ValueChangedAsync"
+                     Options="_opt"/>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }   
+    //[Parameter] public string Style { get; set; } = "height:60vh";
+    [Parameter] public AceLanguage Language { get; set; } = AceLanguage.csharp;
+    [Parameter] public AceTheme Theme { get; set; } = AceTheme.textmate;
+    [Parameter] public bool ShowLanguageList { get; set; } = false;
+    [Parameter] public bool ShowThemeList { get; set; } = false;
+    [Parameter] public string ClassVisible { get; set; } = "visible"; // "invisible"
+    
+    // Настройка
+    private AceEditorOptions _opt { get; set; } = new();
+    
+    private string _currentValue { get; set; } = "";
+
+    private AceJsEditor? _aceJsEditor;
+    
+    private List<(AceTheme Value, string Text)> _themes => Enum.GetValues<AceTheme>()
+        .Select(e => (e, GetThemeDisplayName(e)))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _opt.Language = Language;
+        _opt.Theme = Theme;
+        _currentValue = Value;
+        if (_aceJsEditor != null)
+        {
+            await _aceJsEditor.SetAceEditorParameters(_opt);
+        }
+    }
+
+    // protected override async Task OnParametersSetAsync()
+    // {
+    //     _currentValue = Value;
+    //     // if (_aceJsEditor != null)
+    //     // {
+    //     //await _aceJsEditor.ReceiveCode(Value);
+    //     //     _aceJsEditor.Value = Value;
+    //     // }
+    // }
+    //
+    private string GetThemeDisplayName(AceTheme theme)
+    {
+        var field = theme.GetType().GetField(theme.ToString());
+        var attr = field?.GetCustomAttributes(typeof(DisplayAttribute), false)
+            .FirstOrDefault() as DisplayAttribute;
+        return attr?.Name ?? theme.ToString();
+    }
+
+    private async Task OnLanguageChanged(AceLanguage newVal)
+    {
+        _opt.Language = newVal;
+        if (_aceJsEditor != null)
+        {
+            await _aceJsEditor.SetAceEditorParameters(_opt);
+        }
+        StateHasChanged();
+    }
+    
+    private async Task OnThemeChanged(AceTheme newVal)
+    {
+        _opt.Theme = newVal;
+        if (_aceJsEditor != null)
+        {
+            await _aceJsEditor.SetAceEditorParameters(_opt);
+        }
+        StateHasChanged();
+    }
+    
+    private async Task ValueChangedAsync(string newVal)
+    {
+        if (_currentValue != newVal)
+        {
+            _currentValue = newVal;
+            await ValueChanged.InvokeAsync(newVal);
+        }
+    }
+}

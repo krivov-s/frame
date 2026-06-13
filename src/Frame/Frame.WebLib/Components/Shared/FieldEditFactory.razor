@@ -1,0 +1,264 @@
+﻿@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+@* @typeparam TEntity where TEntity : BaseEntity, new()  // BaseGenericEntity<TEntity> *@
+
+@using Frame.Domain.Entities.Core
+@using Frame.Shared
+@using Frame.WebLib.Shared
+
+@if (Entity != null && Field != null && IsVisible)
+{
+    switch (Field.FieldType)
+    {
+        case EntityFieldType.String:
+            @if(Field.StringValues.Count > 0)
+            {
+                <MudSelect  T="string" 
+                            Variant="@Variant"
+                            Value="@Field.GetValueFromEntity(Entity, "")"
+                            ValueChanged="@((string value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })"
+                            Clearable="@Clearable"
+                            Disabled="@Disabled"
+                            ReadOnly="@_readOnly"
+                            Format="@Field.GetDefaultFormat()"
+                            HelperText="@Field.HelperText"
+                            Label="@Field.HumanName">
+                    @foreach (string val in Field.StringValues)
+                    {
+                        <MudSelectItem Value="@val">@val</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudTextField T="string"
+                              Variant="@Variant"
+                              Immediate="true"
+                              Label="@Field.HumanName"
+                              Disabled="@Disabled"
+                              ReadOnly="@_readOnly"
+                              Format="@Field.GetDefaultFormat()"
+                              HelperText="@Field.HelperText"
+                              Lines="Lines"
+                              MaxLines="MaxLines"
+                              AutoGrow="AutoGrow"
+                              Value="@Field.GetValueFromEntity(Entity, "")"
+                              ValueChanged="@((string value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })" 
+                              Clearable="@Clearable"/>
+            }
+            break;
+        case EntityFieldType.Int:
+            @if (Field.IntValues.Count > 0)
+            {
+                @*
+                    MudSelect не поддерживает Nullable, оно и по сути бессмысленно, поскольку это список предопределенных значений.
+                    Поэтому по-умолчанию, при отсутствии значения, подставляется значение = 0
+                *@
+                <MudSelect Variant="@Variant"
+                           Value="Field.GetValueFromEntity(Entity, -1) ?? -1"
+                           ValueChanged="@((int value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })"
+                           Clearable="@Clearable"
+                           Disabled="@Disabled"
+                           ReadOnly="@_readOnly"
+                           Format="@Field.GetDefaultFormat()"
+                           HelperText="@Field.HelperText"
+                           Label="@Field.HumanName">
+                    @foreach (SelectListItem item in Field.IntValues)
+                    {
+                        <MudSelectItem Value="@item.Value">@item.Description</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudNumericField T="int?"
+                          Variant="@Variant"
+                          Immediate="true"
+                          Label="@Field.HumanName"
+                          Disabled="@Disabled"
+                          ReadOnly="@_readOnly"
+                          Format="@Field.GetDefaultFormat()"
+                          HelperText="@Field.HelperText"
+                          Value="@Field.GetValueFromEntity(Entity, 0)"
+                          ValueChanged="@((int? value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })"                             
+                          Clearable="@Clearable"/>
+            }
+            break;
+        case EntityFieldType.DateTime:
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Label="@Field.HumanName"
+                                   Variant="@Variant"
+                                   Disabled="@Disabled"
+                                   ReadOnly="@_readOnly"
+                                   Editable="true"
+                                   DateFormat="@(ServiceTools.GetDefaultFormat<DateOnly>())" Placeholder="Выберите дату"
+                                   HelperText="@Field.HelperText"
+                                   Required="@Field.Required"
+                                   Clearable="@(!Field.Required && Clearable)"
+                                   Date="@Field.GetValueFromEntity(Entity, DateTime.MinValue)"
+                                   DateChanged="@((DateTime? value) => { Field.SetDatePartOfDateTimeValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTimePicker Label="Время"
+                                   Variant="@Variant"
+                                   Disabled="@Disabled"
+                                   ReadOnly="@_readOnly"
+                                   TimeFormat="HH:mm:ss" Placeholder="Выберите время"
+                                   HelperText="@Field.HelperText"
+                                   Required="@Field.Required"
+                                   Clearable="@(!Field.Required && Clearable)"
+                                   Time="@(Field.GetValueFromEntity(Entity, DateTime.MinValue)?.TimeOfDay)"
+                                   TimeChanged="@((TimeSpan? value) => { Field.SetTimePartOfDateTimeValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })" />
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudTextField T="DateTime?"
+                                  Variant="@Variant"
+                                  Immediate="true"
+                                  Label="@Field.HumanName"
+                                  Disabled="@Disabled"
+                                  ReadOnly="@_readOnly"
+                                  Format="@Field.GetDefaultFormat()"
+                                  HelperText="@Field.HelperText"
+                                  Value="@Field.GetValueFromEntity(Entity, DateTime.MinValue)"
+                                  ValueChanged="@((DateTime? value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged(); })" 
+                                  Clearable="@Clearable"/>
+                </MudItem>
+            </MudGrid>
+            break;
+        case EntityFieldType.DateOnly:
+            <MudDatePicker Label="@Field.HumanName"
+                           Variant="@Variant"
+                           Disabled="@Disabled"
+                           ReadOnly="@_readOnly"
+                           Editable="@(!_readOnly)"
+                           DateFormat="@Field.GetDefaultFormat()"
+                           HelperText="@Field.HelperText"
+                           Placeholder="Выберите дату"
+                           Required="@Field.Required"
+                           Clearable="@(!Field.Required && Clearable)"
+                           Date="@Field.GetDateOnlyValueFromEntityAsDateTime(Entity)"
+                           DateChanged="@((DateTime? value) => { Field.SetDateTimeAsDateOnlyValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged();} )" />
+            break;
+        case EntityFieldType.Bool:
+            <MudTooltip Text="@Field.HelperText">
+                <MudCheckBox T="bool?"
+                             Variant="@Variant"
+                             Label="@Field.HumanName"
+                             Disabled="@Disabled"
+                             ReadOnly="@_readOnly"
+                             TriState="@(!Field.Required)"
+                             Color="Color.Success"
+                             UncheckedColor="Color.Primary"
+                             Value="@Field.GetValueFromEntity(Entity, (Field.Required) ? false : null)"
+                             ValueChanged="@((bool? value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged();} )" />
+            </MudTooltip>
+            break;
+        case EntityFieldType.Decimal:
+            <MudNumericField T="decimal?"
+                          Variant="@Variant"
+                          Immediate="true"
+                          Label="@Field.HumanName"
+                          Disabled="@Disabled"
+                          ReadOnly="@_readOnly"
+                          Format="@Field.GetDefaultFormat()"
+                          HelperText="@Field.HelperText"
+                          Value="@Field.GetValueFromEntity(Entity, new decimal(0))"
+                          ValueChanged="@((decimal? value) => { Field.SetValueToEntity(Entity, value); if(ValueChanged != null) ValueChanged();} )" 
+                          Clearable="@Clearable"/>
+            break;
+        default:
+            <MudAlert Severity="Severity.Warning">@($"Передан неизвестный тип поля: {Field.FieldType}")</MudAlert>
+            break;
+    }
+}
+else
+{
+    <MudAlert Severity="Severity.Warning">@($"Не удалось сконструировать поле Edit")</MudAlert>
+}
+
+@code {
+    /// <summary>
+    /// Значение параметра определяет, доступно ли поле для редактирования.
+    /// Должно быть установлено формой, в которую входит поле.
+    /// Обычно это делается в <see cref="SimpleEditForm"/>
+    /// </summary>
+    [CascadingParameter(Name="CanModify")] public bool CanModify { get; set; }
+    [CascadingParameter(Name="ReadableProps")] public List<string> ReadablePropNames { get; set; }
+    [CascadingParameter(Name="EditableProps")] public List<string> EditablePropNames { get; set; }
+    
+    [Parameter] public Field<TEntity>? Field { get; set; }
+    [Parameter] public TEntity? Entity { get; set; }
+    [Parameter] public Action? ValueChanged { get; set; }
+    [Parameter] public int Lines { get; set; } = 1;
+    [Parameter] public bool AutoGrow { get; set; }
+    [Parameter] public int MaxLines { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public bool Clearable { get; set; } = true;
+
+    /// <summary>
+    /// Возвращает true если у поля нет запрета на отображение пользователю
+    /// </summary>
+    public bool IsVisible
+    {
+        get
+        {
+            if (_visible != null) return _visible.Value;
+            if (Field == null) return true;
+            if (ReadablePropNames == null) return true;
+
+            if (ReadablePropNames.Count == 0)
+            {
+                _visible = true;
+                return true;
+            }
+
+            if (ReadablePropNames.Contains(Field.Name) || !_readOnly)
+            {
+                _visible = true;
+                return true;
+            }
+            
+            _visible = false;
+            return _visible.Value;
+        }
+
+    }
+    private bool? _visible = null;
+    
+    /// <summary>
+    /// Возвращает true если Field is null или у Field не установлено ни одного Setter-а или если
+    /// редактирование запрещено настройками безопасности
+    /// </summary>
+    private bool _readOnly 
+    { 
+        get 
+        {
+            if(Field == null)
+            {
+                return true;
+            }
+            
+            if(    Field.BoolSet is null 
+                && Field.DateOnlySet is null
+                && Field.DateTimeSet is null
+                && Field.DecimalSet is null
+                && Field.IntSet is null
+                && Field.StringSet is null
+                && Field.RefSet is null
+              )
+            {
+                return true;
+            }
+
+            if (!CanModify) return true;
+
+            if (EditablePropNames.Count == 0)
+            {
+                return false;
+            }
+
+            return !EditablePropNames.Contains(Field.Name);
+        }
+    }
+}

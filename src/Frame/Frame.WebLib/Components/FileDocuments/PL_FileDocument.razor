@@ -1,0 +1,35 @@
+﻿@page "/filedocument_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>Файл-документы</PageTitle>
+
+@* <MudPopoverProvider /> *@
+@* <MudDialogProvider Position="DialogPosition.TopLeft" /> *@
+<MudSnackbarProvider />
+
+<CL_FileDocument EditMode="EntitiesListEditMode.FormContent" />
+
+@* 
+<EntitiesList TEntity="FileDocument" 
+              TParentComponent="FileDocumentList"
+              Title="Список файлов в хранилище"
+              AddNewEntityUri="filedocument?OwnerKeyDisabled=false"
+              EditEntityUri="filedocument?Id={Entity.Id}&OwnerKeyDisabled=false"
+              EditMode="EntitiesListEditMode.ExternalForm"
+              ConfigureSelect="x => x.Include(y => y.FileDocumentType)">
+    
+    <PropertyColumn T="@FileDocument" TProperty="@string" Property="x => x.FileKey" Title="@FileDocument.Meta.FileKey.HumanName"></PropertyColumn>
+    <PropertyColumn T="@FileDocument" TProperty="@string" Property="x => x.OwnerKey" Title="@FileDocument.Meta.OwnerKey.HumanName"></PropertyColumn>
+    <PropertyColumn T="@FileDocument" TProperty="@string" Property="x => x.DocumentName" Title="@FileDocument.Meta.DocumentName.HumanName"></PropertyColumn>
+    <PropertyColumn T="@FileDocument"
+                    TProperty="@string"
+                    Property="x => (x.FileDocumentType != null) ? x.FileDocumentType.Name : string.Empty" Title="@FileDocumentType.Meta.HumanName">
+    </PropertyColumn>
+
+</EntitiesList>
+
+ *@
+@code {
+}

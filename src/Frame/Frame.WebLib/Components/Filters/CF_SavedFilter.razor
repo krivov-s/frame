@@ -1,0 +1,195 @@
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.Domain.Params
+@using Frame.Shared
+@using Frame.WebLib.Components.Params
+@using Frame.WebLib.Components.Queries
+@using Frame.WebLib.Components.Shared.AttrTree
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+<SimpleEditForm @ref="_form"
+                TEntity="SavedFilter"
+                TParentComponent="CF_SavedFilter"
+                Entity="_formObject"
+                ShowCloseButton="false"
+                ShowTitle="false">
+    @if (_formObject != null)
+    {
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+            @* ========== TabPanel Общие сведения =========== *@
+            <MudTabPanel Text="Общие сведения">
+                <MudGrid>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="SavedFilter" Entity="_formObject" Field="SavedFilter.Meta.Name"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <TypeSelectControl @bind-FullTypeName="_formObject.EntityTypeName"
+                                           ShowSimpleTypes="false"
+                                           Label="@SavedFilter.Meta.EntityTypeName.HumanName"
+                                           class="ma-1"
+                                           Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="SavedFilter" Entity="_formObject" Field="SavedFilter.Meta.Where" MaxLines="5" AutoGrow="true" />
+                    </MudItem>
+                    @if (FormObject != null && FormObject.Id > 0)
+                    {
+                        <MudItem xs="12" sm="12">
+                            <MudStack Row="true">
+                                <AttrTreeButton Variant="Variant.Outlined"
+                                                Color="Color.Primary"
+                                                EntityType="_formObject.EntityType"
+                                                Title="Показать дерево атрибутов"
+                                                ShowSelectedAttrs="true"
+                                                ShowSaveButton="true"
+                                                SaveButtonText="Добавить к условию отбора"
+                                                CancelButtonText="Закрыть"
+                                                SelectedAttrs="_oneTimeSelectedAttrs"
+                                                SelectedAttrsChanged="AddSelectedAttrs" />
+                                <MudButton Variant="Variant.Outlined" OnClick="RunQuery">Выполнить запрос</MudButton>
+                                <CodeEditorButton @bind-Value="@_formObject.ParamListJson"
+                                                  Title="Редактор списка параметров"
+                                                  Language="AceLanguage.json" />
+                                <ParamListDesignerButton Title="Дизайнер списка параметров"
+                                                         Color="Color.Primary"
+                                                         Variant="Variant.Outlined"
+                                                         Value="@_formObject.ParamListJson"
+                                                         ValueChanged="val => { _formObject.ParamListJson = val; _form?.SetDataChanged(); StateHasChanged(); }" />
+                                <ParamListEditorButton Title="Тестирование списка параметров"
+                                                       Color="Color.Primary"
+                                                       Variant="Variant.Outlined"
+                                                       ShowSaveButton="false"
+                                                       ShowCancelButton="true"
+                                                       CancelButtonText="Закрыть"
+                                                       Value="@_formObject.ParamListJson" />
+                            </MudStack>
+                        </MudItem>
+                    }
+                    <MudItem xs="12" sm="12">
+                        <MudTable Items="@_testQueryResults" Bordered="true" Hover="true" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Результаты выполнения тестового запроса</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context</MudTd>
+                            </RowTemplate>
+                            <PagerContent> <MudTablePager /></PagerContent>
+                        </MudTable>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="Группы фильтров">
+                <CF_SavedFilterGroups CurrentFilter="_formObject"></CF_SavedFilterGroups>
+            </MudTabPanel>
+        </MudTabs>
+    }
+</SimpleEditForm>
+
+
+@code {
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_SavedQuery>? _logger { get; set; }
+    [Inject] private IObjectStorageProvider? _storageProvider { get; set; }
+
+    /// <summary>
+    /// Полностью прогруженный (для существующего), готовый к редактированию объект недвижимости
+    /// </summary>
+    [Parameter] public SavedFilter? FormObject { get; set; }
+
+    private SavedFilter? _formObject = null;
+    private SimpleEditForm<SavedFilter, CF_SavedFilter>? _form { get; set; }
+    private CodeEditor? _codeEditor { get; set; }
+
+    private IReadOnlyCollection<AttrTreeDialog.PropertyData> _oneTimeSelectedAttrs { get; set; } = [];
+    private List<AttrTreeDialog.PropertyData> _selectedAttrs { get; set; } = [];
+    private List<object> _testQueryResults { get; set; } = [];
+
+    private IObjectStorage? _varObjectStorage = null;
+
+    private IObjectStorage? _objectStorage
+    {
+        get
+        {
+            if (_varObjectStorage != null)
+            {
+                return _varObjectStorage;
+            }
+
+            if (_storageProvider == null)
+            {
+                return null;
+            }
+
+            Result<IObjectStorage> resStg = _storageProvider.GetObjectStorage();
+            if (resStg.IsError || resStg.Value == null)
+            {
+                string err = $"Ошибка при получение IObjectStorage: {resStg.ErrorResult}";
+                _logger?.LogError(err);
+                _snackBar?.Add(err);
+                return null;
+            }
+
+            _varObjectStorage = resStg.Value;
+            return _varObjectStorage;
+        }
+    }
+
+    // private  SimpleEditForm<SavedFilter, CF_SavedFilter>? _simpleEditForm;
+    protected override void OnInitialized()
+    {
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    private void AddSelectedAttrs(IReadOnlyCollection<AttrTreeDialog.PropertyData> attrsList)
+    {
+        if (_formObject != null)
+        {
+            string selectedValuesAsString = string.Join(", ", attrsList);
+            _formObject.Where += $" and ({selectedValuesAsString})";
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunQuery()
+    {
+        if (_objectStorage == null) return;
+
+        if (_formObject == null || _formObject.EntityType == null) return;
+
+        try
+        {
+            SavedQuery sQuery = new()
+            {
+                EntityType = _formObject.EntityType,
+                Where = _formObject.Where,
+                ParamListJson = _formObject.ParamListJson
+            };
+            ParamList pl = new();
+            pl.FromJson(sQuery.ParamListJson);
+            Result<List<dynamic>> resList = await _objectStorage.GetDynamicListAsync(sQuery, pl);
+            if (resList.IsError || resList.Value == null)
+            {
+                string err = $"Ошибка выполнения запроса: {resList.ErrorResult}";
+                _logger?.LogError(err);
+                _snackBar?.Add(err);
+                return;
+            }
+
+            _testQueryResults = resList.Value;
+            StateHasChanged();
+        }
+        catch (Exception e)
+        {
+            _snackBar?.Add(e.Message, Severity.Error);
+        }
+
+    }
+
+}

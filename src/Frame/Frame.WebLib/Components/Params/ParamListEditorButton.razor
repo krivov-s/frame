@@ -1,0 +1,87 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@* Для использования данного компонента во внешнем уровне требуется наличие MudDialogProvider  *@
+
+<MudSnackbarProvider />
+
+<MudTooltip Text="Просмотр и редактирование списка параметров">
+    <MudButton Color="Color"
+               Disabled="Disabled"
+               Variant="Variant"
+               OnClick="OpenDynamicFormDialogAsync">@Title</MudButton>
+</MudTooltip>
+
+
+@code {
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] private ILogger<ParamListEditorButton>? _logger { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Список параметров";
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public bool Disabled { get; set; }
+    
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    [Parameter] public string SaveButtonText { get; set; } = "Сохранить";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+    
+    /// <summary>
+    /// Список параметров в формате Json
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>
+    /// Событие, говорящее о том, что произошли изменения (любые) в списке параметров
+    /// </summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    
+    private async Task OpenDynamicFormDialogAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Сервис диалога не доступен", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            DialogOptions options = new DialogOptions
+            {
+                CloseOnEscapeKey = true,
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                Position = DialogPosition.Center
+            };   
+            
+            DialogParameters parameters = new DialogParameters
+            {
+                {"ParamListJson", Value},
+                {"ShowSaveButton", ShowSaveButton},
+                {"ShowCancelButton", ShowCancelButton},
+                {"SaveButtonText", SaveButtonText},
+                {"CancelButtonText", CancelButtonText}
+            };
+
+            var dialog = await _dialogService.ShowAsync<ParamListDynamicForm>("Параметры", parameters, options);
+            var result = await dialog.Result;
+
+            if (result != null &&  !result.Canceled)
+            {
+                if (result.Data is string)
+                {
+                    Value = (string)result.Data;
+                    await ValueChanged.InvokeAsync(Value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _snackBar?.Add(ex.Message, Severity.Error);
+        }
+    }
+}

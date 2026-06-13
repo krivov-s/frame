@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+	  <TargetFramework>net9.0</TargetFramework>
+	  <Nullable>enable</Nullable>
+	  <ImplicitUsings>enable</ImplicitUsings>
+	  <Title>Паспортизация ВСП/РФ</Title>
+	  <Description>Ведение сведений об объектах недвижимости региональной сети</Description>
+	  <Version>0.0.0-local</Version>
+	  <Owners>ЦК Развития портальных систем</Owners>
+	  <Authors>$(Owners)</Authors>
+	  <Company>РСХБ</Company>
+	  <tags></tags>
+	  <ProjectUrl Condition="'$(CI_PROJECT_URL)' != '' ">$(CI_PROJECT_URL)</ProjectUrl>
+	  <PackageProjectUrl>$(ProjectUrl)</PackageProjectUrl>
+	  <OutputType>Library</OutputType>
+	  <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Blazor.AceEditorJs" Version="1.2.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="9.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.8" />
+    <PackageReference Include="MudBlazor" Version="8.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Frame.Infrastructure\Frame.Infrastructure.csproj" />
+    <ProjectReference Include="..\Frame.Rep\Frame.Rep.csproj" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <Folder Include="Components\Helpers\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,220 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.IEntityRepositories
+@using Frame.Domain
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Frame.Domain.QuerySpec
+@using Frame.Shared
+
+@* Если в компонент передано _sharedObjectStorage - оно передается "по этапу" ниже через параметр ObjectStorage
+   иначе может возникнуть ситуация, что в одном storage будут объекты из другого storage *@
+<CompositeForm TParentComponent="CL_FileDocument" 
+               ObjectStorage="_sharedObjectStorage" 
+               ShowCloseButton="false">
+<MudExpansionPanels>
+    <MudExpansionPanel Text="Список документов">
+        @{
+            string strAddNewUri = (OwnerKey != null && OwnerKey.Length > 0) ? $"filedocument?OwnerKeyDisabled=true&OwnerKey={OwnerKey}" : "filedocument?OwnerKeyDisabled=false";
+            string strEditUri = (OwnerKey != null && OwnerKey.Length > 0) ? "filedocument?Id={Entity.Id}&OwnerKeyDisabled=true" : "filedocument?Id={Entity.Id}&OwnerKeyDisabled=false";
+        }
+        <EntitiesListDetail @ref="_entitiesListDetail"
+                            TEntity="FileDocument"
+                            TParentComponent="CL_FileDocument"
+                            DynamicTitle="() => BuildTitle()"
+                            TitleTypo="TitleTypo"
+                            AddNewEntityUri="@strAddNewUri"
+                            EditEntityUri="@strEditUri"
+                            EditMode="EditMode"
+                            ConfigureQuerySpecification="qs => ConfigureQuerySpec(qs)"
+                            OnBeforeEditFormContent="(fd, repo) => InitNewObject(fd, repo)">
+            <GridContent>
+                <PropertyColumn T="@FileDocument" TProperty="@string" 
+                                Property="x => x.DocumentName" 
+                                Title="@FileDocument.Meta.DocumentName.HumanName"/>
+                <PropertyColumn T="@FileDocument"
+                                TProperty="@string"
+                                Property="x => (x.FileDocumentType != null) ? x.FileDocumentType.Name : string.Empty" 
+                                Title="@FileDocumentType.Meta.HumanName"/>
+                <PropertyColumn T="@FileDocument" 
+                                TProperty="@string" 
+                                Property="x => x.FileKey" 
+                                Title="@FileDocument.Meta.FileKey.HumanName"/>
+                <PropertyColumn T="@FileDocument" 
+                                TProperty="@string" 
+                                Property="x => x.OwnerKey" 
+                                Title="@FileDocument.Meta.OwnerKey.HumanName"/>
+            </GridContent>
+
+            <FormContent Context="currentObject">
+                <CF_FileDocument Entity="currentObject" 
+                                 OwnerKey="@OwnerKey"
+                                 SystemTag="@SystemTag">
+                </CF_FileDocument>
+            </FormContent>
+
+        </EntitiesListDetail>
+    </MudExpansionPanel>
+    <MudExpansionPanel Text="Зона быстрой загрузки файлов" MaxHeight="500">
+        <DropFileComponent OwnerKey="@OwnerKey" 
+                           SystemTag="@SystemTag" 
+                           DefaultFileDocumentTypeId="@(_defaultFileDocumentType?.Id ?? 0)"
+                           ClearDirtyFlagOnCompositeFormOnUpload="ClearDirtyFlagOnCompositeFormOnUpload"
+                           OnFileDocumentListSaved="_onFileDocumentsSavedAsync"/>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+</CompositeForm>
+
+@code {
+    /// <summary>
+    /// Общее объектное хранилище, определенное родительской формой. Если задано - обязательно используется.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+    
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<CL_FileDocument>? _logger { get; set; }
+
+    /// <summary>
+    /// Ключ владельца файл-документов, будет использоваться при формировании запроса 
+    /// и при передече в форму для создания нового файл-документа
+    /// </summary>
+    [Parameter] public string OwnerKey { get; set; } = "";
+
+    /// <summary>
+    /// Наименование владельца. Если задано - будет использоваться при формировании заголовка списка
+    /// </summary>
+    [Parameter] public string OwnerName { get; set; } = "";
+
+    /// <summary>
+    /// Ссылка на объект-владелец. Если задано - будет отображено для обеспечение возможности открытия 
+    /// в новом окне объекта-владельца.
+    /// <para>...Еще не реализовано...</para>
+    /// </summary>
+    [Parameter] public string OwnerLink { get; set; } = "";
+
+    /// <summary>
+    /// Заголовок списка.
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Стиль шрифта заголовка. По-умолчанию <see cref="Typo.subtitle1"/>
+    /// </summary>
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.subtitle1;
+
+    /// <summary>
+    /// Показывать заголовок списка?
+    /// </summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    /// <summary>
+    /// Режим редактирования объекта из списка (как обрабатывается команда на редактирование):
+    /// переход по внешней ссылке, или внутренняя форма, описанная в FormContent. По-умолчанию - FormContent.
+    /// </summary>
+    [Parameter] public EntitiesListEditMode EditMode { get; set; } = EntitiesListEditMode.FormContent;
+
+    /// <summary>
+    /// Значение системного тега. Если задан то список будет фильтроваться по его значению, а также
+    /// тег будет "протягиваться" во все создаваемые файл-документы и записываться в атрибут FileDocument.SystemTag
+    /// </summary>
+    [Parameter] public string SystemTag { get; set; } = "";
+
+    /// <summary>
+    /// Id типа файла по-умолчанию, который будет подставляться новому файлу.
+    /// </summary>
+    [Parameter] public int? DefaultFileDocumentTypeId { get; set; }
+
+    /// <summary>
+    /// <inheritdoc cref="DropFileComponent.ClearDirtyFlagOnCompositeFormOnUpload"/>
+    /// </summary>
+    [Parameter] public bool ClearDirtyFlagOnCompositeFormOnUpload { get; set; } = true;
+
+    /// <summary>
+    /// Событие, говорящее о том, что в БД был сохранен набор файл-документов. Событие вызывается один раз
+    /// на каждое нажатие кнопки "Загрузить" и оповещает об успешном или об ошибочном завершении сохранения.
+    /// Аргумент - кол-во сохраненных документов
+    /// </summary>
+    [Parameter] public EventCallback<int> OnFileDocumentListSaved { get; set; }
+    
+    
+    private EntitiesListDetail<FileDocument, CL_FileDocument>? _entitiesListDetail { get; set; }
+    
+    private FileDocumentType? _defaultFileDocumentType { get; set; }
+
+
+    protected string BuildTitle()
+    {
+        if (!ShowTitle)
+        {
+            return "";
+        }
+
+        if(Title != "")
+        {
+            return Title;
+        }
+        else
+        {
+            return (OwnerName.Length == 0) ? "Список файлов в хранилище" : $"{OwnerName}. Список файлов в хранилище";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await _loadDefaultFileDocumentTypeAsync();
+    }
+    
+    protected void InitNewObject(FileDocument fileDocument, IBaseRepository<FileDocument>? repo)
+    {
+        if (fileDocument == null || fileDocument.Id != 0) return;
+        
+        if (OwnerKey != "") 
+        {
+            fileDocument.OwnerKey = OwnerKey;
+        }
+
+        if (_defaultFileDocumentType != null)
+        {
+            fileDocument.FileDocumentType = _defaultFileDocumentType;
+        }
+    }
+
+    private IQuerySpecification<FileDocument> ConfigureQuerySpec(IQuerySpecification<FileDocument> qs)
+    { 
+        qs.Include(y => y.FileDocumentType!);
+        if (OwnerKey.Length > 0)
+        {
+            qs = qs.Where(fd => fd.OwnerKey == OwnerKey);
+        }
+        if (SystemTag.Length > 0)
+        {
+            qs = qs.Where(fd => fd.SystemTag == SystemTag);
+        }
+
+        return qs;
+    }
+
+    private async Task _loadDefaultFileDocumentTypeAsync()
+    {
+        if (_defaultFileDocumentType != null) return;
+
+        if (_sharedObjectStorage != null && DefaultFileDocumentTypeId is > 0)
+        {
+            Result<FileDocumentType> res = await _sharedObjectStorage.GetObjAsync<FileDocumentType>(DefaultFileDocumentTypeId.Value);
+            if (!res.IsErrorOrNull)
+            {
+                _defaultFileDocumentType = res.Value;
+            }
+        }
+    }
+
+    private async Task _onFileDocumentsSavedAsync(int count)
+    {
+        if (count > 0 && _entitiesListDetail != null)
+        {
+            await _entitiesListDetail.RefreshAsync();
+            await OnFileDocumentListSaved.InvokeAsync(count);
+        }         
+    }
+}

@@ -1,0 +1,162 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Reports
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCard>
+            <MudCardHeader>
+                <MudText Typo="Typo.h5">Группа отчётов @_formObject?.Name</MudText>
+            </MudCardHeader>
+            <MudDivider />
+            <MudCardContent>
+                @if (_formObject != null)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                        <MudTabPanel Text="Параметры">
+                            <SimpleEditForm @ref="_formFrameReportGroup"
+                                            TEntity="FrameReportGroup"
+                                            TParentComponent="CF_FrameReportGroupReports"
+                                            Entity="_formObject"
+                                            ShowTitle="false">
+                                <MudGrid>
+                                    <MudItem xs="12" sm="12">
+                                        <MudStack Row="false">
+                                            <FieldEditFactory TEntity="FrameReportGroup" Entity="_formObject" Field="FrameReportGroup.Meta.Name" />
+                                            <FieldEditFactory TEntity="FrameReportGroup" Entity="_formObject" Field="FrameReportGroup.Meta.Descr" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </SimpleEditForm>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Отчёты">
+                            <EntitiesListDetail TEntity="FrameReportGroupLink"
+                                                TParentComponent="CF_FrameReportGroupReports"
+                                                Title="Список отчётов"
+                                                Entities="_formObject.FrameReports"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnAddNewAsync="_addNewFrameReportGroupLink">
+                                <GridContent>
+                                    <PropertyColumn T="@FrameReportGroupLink" TProperty="@string" Property="x => x.FrameReport != null ? x.FrameReport.Name : string.Empty" Title="@FrameReport.Meta.Name.HumanName" />
+                                    <PropertyColumn T="@FrameReportGroupLink" TProperty="@string" Property="x => x.FrameReport != null ? x.FrameReport.Descr : string.Empty" Title="@FrameReport.Meta.Descr.HumanName" />
+                                </GridContent>
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                    </MudTabs>
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudCardContent>
+
+        </MudCard>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public int id { get; set; }
+    [Parameter] public FrameReportGroup? FormObject { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_FrameReportGroupReports>? _logger { get; set; }
+
+    private FrameReportGroup? _formObject = null;
+    private FrameReport? _frameReport = null;
+
+    private bool _isAuthorized;
+
+    private SimpleEditForm<FrameReportGroup, CF_FrameReportGroupReports>? _formFrameReportGroup { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    protected readonly Dictionary<string, EntitiesListOperation<FrameReportGroupLink>> Commands = [];
+
+    private async Task<Result<FrameReportGroupLink>> _addNewFrameReportGroupLink(IBaseRepository<FrameReportGroupLink>? repository)
+    {
+        Result<FrameReportGroupLink> res = Result<FrameReportGroupLink>.Success(null);
+
+        if (_dialogService != null && repository != null && FormObject != null)
+        {
+            IObjectStorage objectStorage = repository.ObjectStorage;
+
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<FrameReport>> parameters = new DialogParameters<SelectDialog<FrameReport>>();
+
+            Result<List<FrameReport>> resReports = await objectStorage.GetListAsync<FrameReport>("Чтение всех отчётов");
+            if (resReports.IsErrorOrNull)
+            {
+                _snackBar?.Add(resReports.ErrorResult, Severity.Error);
+                return res;
+            }
+
+            List<FrameReport> users = resReports.Value!;
+            if (users.Count == 0)
+            {
+                _snackBar?.Add("Не найдены отчёты для добавления", Severity.Info);
+                return res;
+            }
+
+            var excludedIDs = new HashSet<int>(FormObject.FrameReports.Select(p => p.FrameReport.Id));
+            var reportsClean = users.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+            if (reportsClean.Count > 0)
+            {
+                parameters.Add(x => x.Items, reportsClean);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<FrameReport>>("Выберите пользователя", parameters, options);
+                var result = await dialog.Result;
+                if (result is { Canceled: false })
+                {
+                    FrameReport? report = (FrameReport?)result.Data;
+                    if (report != null)
+                    {
+                        FrameReportGroupLink rel = new()
+                        {
+                            FrameReportGroupId = FormObject.Id,
+                            FrameReportGroup = FormObject,
+                            FrameReportId = report.Id,
+                            FrameReport = report
+                        };
+                        FormObject.FrameReports.Add(rel);
+                        objectStorage.Add(rel);
+                        _compositeFormState?.SetDirty(true);
+                        return Result<FrameReportGroupLink>.Success(rel);
+                    }
+                }
+            }
+            else
+            {
+                _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+            }
+        }
+
+        return res;
+    }
+}

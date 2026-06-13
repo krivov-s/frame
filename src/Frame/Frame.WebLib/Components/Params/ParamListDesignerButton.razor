@@ -1,0 +1,84 @@
+@using Frame.Domain.Params
+@using Microsoft.Extensions.Logging
+
+<MudStack Row="true">
+    <MudButton Color="Color"
+               Disabled="Disabled"
+               Variant="Variant"
+               OnClick="ShowDialogAsync">@Title</MudButton>
+</MudStack>
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<ParamListDesignerButton>? _logger { get; set; }
+
+    [CascadingParameter] public CompositeFormState? CompositeFormState { get; set; }
+    [Parameter] public string Title { get; set; } = "Список параметров";
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Список параметров в формате Json
+    /// </summary>
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    
+    [Parameter] public EventCallback BeforeShowDialog { get; set; }
+    [Parameter] public EventCallback DialogClosed { get; set; }
+
+    private async Task SetValue(ParamList plObject)
+    {
+        // _paramListJson = plObject.ToJson();
+        // _paramListObject = plObject;
+        // ValueChanged.InvokeAsync(_paramListJson);
+        
+        await ValueChanged.InvokeAsync(plObject.ToJson());
+        // Если есть композитная форма - оповещаем ее, что есть изменения в списке
+        CompositeFormState?.SetDirty(true);
+        
+        StateHasChanged();
+    }
+    
+    private async Task ShowDialogAsync()
+    {
+        if (_dialogService != null && _snackBar != null)
+        {
+            try
+            {
+                await BeforeShowDialog.InvokeAsync();
+                
+                // Основной источник данных для редактирования - Json (Value)
+                string paramListJson = Value;
+                ParamList paramListObject = new();
+                paramListObject.FromJson(paramListJson);
+                
+                // В диалог отдаем готовый объект
+                DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+                DialogParameters<ParamListDesignerDialog> parameters = new();
+                parameters.Add("Value", paramListObject);
+            
+                var dialog = await _dialogService.ShowAsync<ParamListDesignerDialog>(Title, parameters, options);
+                var r = await dialog.Result;
+                if (r != null && !r.Canceled)
+                {
+                    ParamList? tmp = (ParamList?) r.Data;
+                    if (tmp != null)
+                    {
+                        await SetValue(tmp);
+                    }
+                }
+
+                await DialogClosed.InvokeAsync();
+            }
+            catch (Exception ex)
+            {
+                string err = $"Ошибка: {ex.Message}";
+                _logger?.LogError(ex, err);
+                _snackBar?.Add(err);
+            }
+            
+        }
+    }
+}

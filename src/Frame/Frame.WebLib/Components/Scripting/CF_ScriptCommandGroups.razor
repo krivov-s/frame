@@ -1,0 +1,115 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Scripting
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+@if (CurrentCommand != null)
+{
+    <EntitiesListDetail TEntity="ScriptCommandGroupLink"
+                        TParentComponent="CF_ScriptCommandGroups"
+                        Title="Список групп"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        ShowEditButton="false"
+                        Entities="CurrentCommand.ScriptCommandGroups"
+                        OnAddNewAsync="_addNewScriptCommandGroupLink">
+        <GridContent>
+            <PropertyColumn T="@ScriptCommandGroupLink" TProperty="@string" Property="x => x.ScriptCommandGroup != null ? x.ScriptCommandGroup.Name : string.Empty" Title="@ScriptCommandGroup.Meta.Name.HumanName"></PropertyColumn>
+        </GridContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public ScriptCommand? CurrentCommand { get; set; }
+
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+
+    private SimpleEditForm<ScriptCommandGroup, CF_ScriptCommandGroups>? _formScriptCommandGroup { get; set; }
+
+    protected readonly Dictionary<string, EntitiesListOperation<ScriptCommandGroupLink>> Commands = [];
+
+    private async Task<Result<ScriptCommandGroupLink>> _addNewScriptCommandGroupLink(IBaseRepository<ScriptCommandGroupLink>? repository)
+    {
+        Result<ScriptCommandGroupLink> res = Result<ScriptCommandGroupLink>.Success(null);
+        ScriptCommand? command = (ScriptCommand?)CurrentCommand;
+
+        if (_dialogService != null && repository != null && CurrentCommand != null)
+        {
+            try
+            {
+                IObjectStorage objectStorage = repository.ObjectStorage;
+
+                DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+                DialogParameters<SelectDialog<ScriptCommandGroup>> parameters = new DialogParameters<SelectDialog<ScriptCommandGroup>>();
+
+                Result<List<ScriptCommandGroup>> resRole = await objectStorage.GetListAsync<ScriptCommandGroup>("Чтение всех групп");
+                if (resRole.IsErrorOrNull)
+                {
+                    _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+                    return res;
+                }
+
+                List<ScriptCommandGroup> commands = resRole.Value!;
+                if (commands.Count == 0)
+                {
+                    _snackBar?.Add("Не найдены группы для добавления", Severity.Info);
+                    return res;
+                }
+
+                var excludedIDs = new HashSet<int>(CurrentCommand.ScriptCommandGroups.Select(p => p.ScriptCommand!.Id));
+                var groupsClean = commands.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+                if (groupsClean.Count > 0)
+                {
+                    parameters.Add(x => x.Items, groupsClean);
+                    var dialog = await _dialogService.ShowAsync<SelectDialog<ScriptCommandGroup>>("Выберите группу", parameters, options);
+                    var result = await dialog.Result;
+                    if (result is { Canceled: false })
+                    {
+                        ScriptCommandGroup? group = (ScriptCommandGroup?)result.Data;
+                        if (group != null)
+                        {
+                            ScriptCommandGroupLink rel = new()
+                            {
+                                ScriptCommandGroupId = group.Id,
+                                ScriptCommandGroup = group,
+                                ScriptCommandId = CurrentCommand.Id,
+                                ScriptCommand = CurrentCommand
+                            };
+                            CurrentCommand.ScriptCommandGroups.Add(rel);
+                            objectStorage.Add(rel);
+                            _compositeFormState?.SetDirty(true);
+                            return Result<ScriptCommandGroupLink>.Success(rel);
+                        }
+                    }
+                }
+                else
+                {
+                    _snackBar?.Add($"Отсутствуют группы для добавления", Severity.Info);
+                }
+            }
+            catch (Exception exc)
+            {
+                var daatt = exc;
+            }
+
+            return res;
+        }
+        else
+        {
+            _snackBar?.Add($"Отсутствуют скрипты для добавления", Severity.Info);
+        }
+        return res;
+    }
+}

@@ -1,0 +1,700 @@
+﻿@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+@typeparam TParentComponent where TParentComponent : class
+@* @inherits EntitiesListDetailForm *@
+
+@* @layout Frame.WebLib.Components.Layout.FormLayout
+ *@
+
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+@using Frame.Shared
+@using Frame.App.Security
+@using Frame.Domain.Entities.Core
+@using Frame.App.IEntityRepositories
+@using Frame.App.Cores
+@using Frame.Domain
+@using Frame.Domain.QuerySpec
+
+
+<ErrorBoundary>
+<ChildContent>
+        @* Validation="@(Validator?.ValidateValue)" *@
+    <MudForm Model="_formObject" FieldChanged="SetDataChanged">
+        <MudCard>
+            @if (_isAuthorized)
+            {
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                        <MudText>Идет загрузка...</MudText>
+                }
+                else if (_canView == false)
+                {
+                    <MudAlert Severity="Severity.Warning">Отсутствует право просмотра информации!</MudAlert>
+                }
+                else
+                {
+                    if (ShowTitle)
+                    {
+                        MarkupString mstrTitle = BuildTitle();
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="@TitleTypo">@mstrTitle</MudText>
+                                <MudDivider />
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                    }
+                    <MudCardContent>
+                        @if (_formObject != null)
+                        {
+                            <CascadingValue Name="CanModify" Value="_canModify">
+                            <CascadingValue Name="ReadableProps" Value="_readablePropNames">
+                            <CascadingValue Name="EditableProps" Value="_editablePropNames">
+                                @if (ChildContent == null)
+                                {
+                                    @foreach (var field in _formObject.GetFields())
+                                    {
+                                        if (HiddenFields.Contains(field))
+                                        {
+                                            // Если поле в списке скрытых полей - пропускаем его 
+                                            continue;
+                                        }
+                                        if (_readablePropNames.Count > 0 && !_readablePropNames.Contains(field.Name))
+                                        {
+                                            // Задан список доступных для просмотра полей, а данного поля в нем нет - пропускаем 
+                                            continue;
+                                        }
+
+                                        bool fieldIsReadOnly = _editablePropNames.Count > 0 && !_editablePropNames.Contains(field.Name);
+                                        bool fieldInDisabledList = DisabledFields.Contains(field) || fieldIsReadOnly;
+                                        
+                                        if (field.FieldType == EntityFieldType.Ref)
+                                        {
+                                            <RefEditFactory TEntity="TEntity"
+                                                            Disabled="!_canModify || fieldInDisabledList"
+                                                            Field="field"
+                                                            Entity="_formObject"
+                                                            Variant="@FieldEditVariant"
+                                                            ValueChanged="SetDataChanged"/>
+                                        }
+                                        else
+                                        {
+                                            <FieldEditFactory TEntity="TEntity"
+                                                              Entity="_formObject"
+                                                              Disabled="!_canModify || fieldInDisabledList"
+                                                              Field="field"/>
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    @ChildContent
+                                }
+                                    
+                            </CascadingValue>
+                            </CascadingValue>
+                            </CascadingValue>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        @if (_dataChanged)
+                        {
+                            bool bShowSaveButton = ShowSaveButton;
+                            bool bShowSaveAndCreateButton = ShowSaveAndCreateButton;
+                            string strSaveButtonText = "Сохранить";
+                            // Если мы в составе композитной формы, то кнопки добавления можно показывать только в случае нового объекта,
+                            // поскольку до момента добавления в репозиторий основной форме пофиг: закроем и ничего не сохранится.
+                            // А если объект уже в контексте - то в любом случае мы его уже правим, засветится основная кнопка композитной формы
+                            if (_compositeFormState != null)
+                            {
+                                bShowSaveAndCreateButton = false;
+                                if (_formObject == null || _formObject.Id != 0)
+                                {
+                                    // В составе композитной формы для существующего объекта кнопка Save бессмысленна: 
+                                    // изменения сразу происходят в объекте, котоорый уже в ObjectStorage и будет сохранен 
+                                    // в случае сохранения CompositeForm
+                                    bShowSaveButton = false;
+                                }
+                                else if(_formObject != null && _formObject.Id == 0)
+                                {
+                                    strSaveButtonText = "Проверить и приготовить к сохранению";
+                                }
+                            }
+                            if(bShowSaveButton)
+                            {
+                                <MudTooltip Text="Сохранить сделанные изменения" Arrow="true" Color="Color.Default">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveAsync" class="ma-1">@strSaveButtonText</MudButton>
+                                </MudTooltip>
+                            }
+                            if (bShowSaveAndCreateButton)
+                            {
+                                <MudTooltip Text="Сохранить сделанные изменения и создать новый документ" Arrow="true" Color="Color.Default">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveAndCreateAsync" class="ma-1">Сохранить и создать</MudButton>
+                                </MudTooltip>
+                            }
+                        }
+                        @if(ShowCloseButton)
+                        {
+                            <MudTooltip Text="Закрыть окно" Arrow="true" Color="Color.Default">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CancelAsync" class="ma-1">Закрыть</MudButton>
+                            </MudTooltip>
+                        }
+                    </MudCardActions>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+            }
+        </MudCard>
+    </MudForm>
+</ChildContent>
+<ErrorContent Context="ctx">
+    <p class="errorUI">😈 Какая-то хрень </p>
+</ErrorContent>
+</ErrorBoundary>
+
+
+@code {
+    #region ==================== Внешние сервисы ====================
+    [Inject] IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IUserCore? _userCore { get; set; }
+    //[Inject] protected IObjectStorageProvider? _objectStorageProvider { get; set; }
+    //[Inject] protected IAuthService? _authService { get; set; }
+    [Inject] protected ISnackbar? _snackBar { get; set; }
+    [Inject] protected IJSRuntime? JSRuntime { get; set; }
+    [Inject] ILogger<TParentComponent>? _logger { get; set; }
+    // [Inject] protected EntityValidatorProvider? _validatorProvider { get; set; }
+    #endregion
+
+    #region ==================== Параметры компонента ====================
+
+    /// <summary>
+    /// Общее объектное хранилище, определенное родительской формой. Если задано - обязательно используется.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+
+    /// <summary>
+    /// Общий репозиторий, определенны родительской формой. Если задан - обязательно используется. В нем будут производиться изменения (добавление/удаление объекта)
+    /// </summary>
+    [CascadingParameter] IBaseRepository<TEntity>? _sharedRepository { get; set; }
+
+    /// <summary>
+    /// Состояние самой внешней формы CompositeForm. 
+    /// Cодержит OnStateChanged, с помощью которого корневой форме CompositeForm сообщается, 
+    /// что есть данные для сохранения (и рисуется кнопка).
+    /// </summary>
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    /// <summary>
+    /// Состояние формы, которое передается из <see cref="EntitiesListDetail{TEntity, TParentComponent}" /> если <see cref="SimpleEditForm{TEntity, TParentComponent}" /> используется внутри нее.
+    /// Нужно чтобы сообщить <see cref="EntitiesListDetail{TEntity, TParentComponent}" /> результаты работы формы, добавлять новые объекты в список.
+    /// </summary>
+    [CascadingParameter] EntitiesListDetailFormState<TEntity>? _entitiesListFormState { get; set; }
+
+    #region ========== Внешний вид ==========
+
+    /// <summary>
+    /// Поля, которые должны отображаться на форме. Если не задано - будет построено динамически на основании метаданных.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }    
+
+    /// <summary>
+    /// Функция динамического получения заголовка окна
+    /// </summary>
+    [Parameter] public Func<TEntity?, string>? DynamicTitle { get; set; }
+
+    /// <summary>
+    /// Статический заголовок окна
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Стиль шрифта заголовка. По-умолчанию <see cref="Typo.h6"/>
+    /// </summary>
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.h6;
+
+    /// <summary>
+    /// Внешний вид полей для ввода (поле Variant: Outlined, Filled, Text))
+    /// </summary>
+    [Parameter] public Variant FieldEditVariant { get; set; } = Variant.Outlined;
+
+    /// <summary>
+    /// Показывать кнопку "Закрыть"?
+    /// </summary>
+    [Parameter] public bool ShowCloseButton { get; set; } = true;
+
+    /// <summary>
+    /// Показывать кнопку "Сохранить и создать"?
+    /// </summary>
+    [Parameter] public bool ShowSaveAndCreateButton { get; set; } = true;
+
+    /// <summary>
+    /// Показывать кнопку "Сохранить"?
+    /// </summary>
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+
+    /// <summary>
+    /// Показывать заголовок формы?
+    /// </summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    /// <summary>
+    /// Закрывать или не закрывать вкладку после нажатия на кнопку CloseButton.
+    /// </summary>
+    [Parameter] public bool CloseWindowOnCompleted { get; set; } = true;
+
+    /// <summary>
+    /// Список полей, которые будут выводиться как Disabled
+    /// </summary>
+    [Parameter] public List<Field<TEntity>> DisabledFields { get; set; } = [];  
+
+    /// <summary>
+    /// Список полей, которые не будут выводиться
+    /// </summary>
+    [Parameter] public List<Field<TEntity>> HiddenFields { get; set; } = [];  
+
+    #endregion
+
+    #region ========== Действия, события и делегаты ==========
+
+    /// <summary>
+    /// Сигнал о том, что объект был загружен из БД или создан. Если объект был передан через параметр Entity - Action не будет вызван.
+    /// </summary>
+    [Parameter] public Action<TEntity, IBaseRepository<TEntity>?>? EntityLoaded { get; set; }
+
+    #endregion
+
+    #region ========== Конфигурирование источника данных ==========
+
+    /// <summary>
+    /// Признак того, что все операции должны выполнятья в памяти, без сохранения в БД.
+    /// При установке этого параметра вызов SaveChangesAsync не производится.
+    /// </summary>
+    [Parameter] public bool OperateInMemory { get; set; }
+
+    // /// <summary>
+    // /// Id объекта, для которого строится форма редактирования. Если задано, параметр Entity должен быть равен null
+    // /// или Entity.Id == Id
+    // /// </summary>
+    // [Parameter] public int Id { get; set; }
+
+    /// <summary>
+    /// Экземпляр объекта, для которого строится форма редактирования. Если задан, то параметр Id должено быть равен 0
+    /// или Entity.Id == Id
+    /// </summary>
+    [Parameter] public TEntity? Entity { get; set; }
+
+    // /// <summary>
+    // /// Репозиторий, из которого был прочитан объект, или в который должен быть сохранен объект после создания.
+    // /// ObjectStorage для всех остальных RefEdit-ов будет взят из <see cref="Repository.ObjectStorage" />
+    // /// </summary>
+    // [Parameter] public IBaseRepository<TEntity>? Repository { get; set; }
+
+    /// <summary>
+    /// Конфигурирование секции Select запроса. Используется при чтении данных объекта по его id.
+    /// <para>Внимание! Если задается - то полностью переопределяет ConfigureSelect, который был задан (если был задан) при регистрации репозитория</para>
+    /// </summary>
+    [Obsolete("Устаревший параметр! Необходимо заменить на ConfigureQuerySpecification")]
+    [Parameter] public Func<IQueryable<TEntity>, IQueryable<TEntity>>? ConfigureSelect { get; set; }
+    
+    [Parameter] public Func<IQuerySpecification<TEntity>, IQuerySpecification<TEntity>>? ConfigureQuerySpecification { get; set; }
+
+    #endregion
+
+    #region ========== Чтение прав на тип/объект ==========
+    
+    /// <summary>
+    /// Установка значения CanView - может ли текущий пользователь просматривать свойства объекта
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnCanViewSet { get; set; }
+    
+    /// <summary>
+    /// Установка значения CanModify - может ли текущий пользователь редактировать свойства объекта
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnCanModifySet { get; set; }
+        
+    #endregion
+    
+    #endregion
+
+    #region ==================== Внутренние настраиваемые параметры, с которым работает форма. ====================
+
+    private IBaseRepository<TEntity>? _formRepository = null;
+    private IObjectStorage? _formStorage = null;
+    
+    private bool _showSaveButton = false;
+    private bool _showSaveAndCreate = false;
+
+    /// <summary>
+    /// Объект, с которым работает форма. Инициализируется параметром <see cref="Entity" /> или создается формой.
+    /// </summary>
+    private TEntity? _formObject 
+    { 
+        get
+        {
+            if(_valFormObject == null)
+            {
+                _valFormObject = Entity;
+            }
+            return _valFormObject;
+        }
+    }
+    private TEntity? _valFormObject = null;
+
+    /// <summary>
+    /// Хранилище, с которым работает форма. Порядок определения
+    /// <list type="number">
+    /// <item>Переданное в форму каскадным параметром <see cref="_sharedObjectStorage" /> </item>
+    /// <item>Полученное от каскадного параметра <see cref="_sharedRepository" /> </item>
+    /// <item>Полученное через DI в случае, если ничего не было передано</item>
+    /// </list>
+    /// </summary>
+    protected IObjectStorage? FormObjectStorage
+    {
+        get
+        {
+            if(_formStorage == null)
+            {
+                if (_sharedObjectStorage != null)
+                {
+                    _formStorage = _sharedObjectStorage;
+                }
+                else if (_sharedRepository != null)
+                {
+                    _formStorage = _sharedRepository.ObjectStorage;
+                }
+                else
+                {
+                    _snackBar?.Add("Ошибка конфигурирования: в SimpleEditForm не передан ни один каскадный параметер (SharedObjectStorage или SharedRepository)");
+                }
+                // else if(_objectStorageProvider != null)
+                // {
+                //     Result<IObjectStorage> res = _objectStorageProvider.GetObjectStorage();
+                //     if (res.IsError || res.Value == null)
+                //     {
+                //         string strError = $"Не удалось получить ObjectStorage от IObjectStorageProvider: {res.ErrorResult}";
+                //         _logger?.LogError(strError);
+                //         _snackBar?.Add(strError, MudBlazor.Severity.Error);
+                //     }
+                //     else
+                //     {
+                //         _formStorage = res.Value;
+                //     }
+                // }
+            }
+            return _formStorage;
+        }
+        set => _formStorage = value;
+    }
+
+    /// <summary>
+    /// Репозиторий, с которым работает форма. Порядок определения:
+    /// <list type="number">
+    /// <item>Переданное в форму каскадным параметром <see cref="_sharedRepository" /> </item>
+    /// <item>Полученное от <see cref="FormObjectStorage" /> </item>
+    /// </list>
+    /// </summary>
+    protected IBaseRepository<TEntity>? FormObjectRepository
+    {
+        get
+        {
+            if(_formRepository == null)
+            {
+                if (_sharedRepository != null)
+                {
+                    _formRepository = _sharedRepository;
+                }
+                else if (FormObjectStorage != null)
+                {
+                    Result<IBaseRepository<TEntity>> resRepo = FormObjectStorage.GetBaseRepository<TEntity>();
+                    if (resRepo.IsError || resRepo.Value == null)
+                    {
+                        string strError = "Ошибка при получении репозитория из хранилища";
+                        _logger?.LogError("{strError} : {ErrorResult}", strError, resRepo.ErrorResult);
+                        _snackBar?.Add(strError, Severity.Error);
+                    }
+                    else
+                    {
+                        _formRepository = resRepo.Value;
+                        
+                        if (ConfigureSelect != null)
+                        {
+                            _formRepository.ConfigureSelect = ConfigureSelect;
+                        }
+
+                        if (ConfigureQuerySpecification != null)
+                        {
+                            _formRepository.ConfigureQuerySpecification = ConfigureQuerySpecification;
+                        }
+
+                    }
+                }
+            }
+            return _formRepository;
+        }
+        set => _formRepository = value;
+    }
+
+    #endregion
+
+    #region ==================== Внутренние служебные переменные формы ====================
+
+    private bool _dataChanged = false;
+    private bool _isAuthorized = false;
+    private bool _isLoading = false;
+    private bool _canView = false;
+    private bool _canModify = false;
+    private List<string> _readablePropNames = [];
+    private List<string> _editablePropNames = [];
+
+    // Валидацию не удалось заставить работать по-нормальному: контролам требуется наличие свойства "For"
+    // Однако конструкция For="@(() => field.GetValueFromEntity(Entity, ""))" не прокатила, выдала ошибку в Runtime.
+    // Пока забил на это, валидация делается при сохранении в БД.
+    // protected BaseEntityValidator<TEntity>? _validator { get; set; } = null;
+    // protected BaseEntityValidator<TEntity>? Validator
+    // {
+    //     get
+    //     {
+    //         if (_validator == null && _validatorProvider != null)
+    //         {
+    //             var validator = _validatorProvider.GetValidator<TEntity>();
+    //             if (validator != null)
+    //             {
+    //                 _validator = validator as BaseEntityValidator<TEntity>;
+    //             }
+    //         }
+    //         if (_validator == null)
+    //         {
+    //             _validator = new BaseEntityValidator<TEntity>();
+    //         }
+    //         return _validator;
+    //     }
+    // }
+
+    #endregion
+
+    #region ====================  Инициализация формы. ====================
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar); /*NavigationManager*/
+
+        if(_compositeFormState != null || _entitiesListFormState != null)
+        {
+            // Форма находится под управлением CompositeForm или списка EntitiesListDetail
+            // В этом случае кнопка "Закрыть" не должна быть видимой: окном управляет 
+            // либо композитная форма, либо вместо закрытия окна будет возврат в список
+            ShowCloseButton = false;
+        }
+
+        // Корректируем видимость кнопок сохранения с учетом прав доступа на TEntity
+        if (_isAuthorized && _userCore != null)
+        {
+            if (_formObject != null && _formObject.Id > 0)
+            {
+                _canModify = _userCore.CanModify(_formObject);
+                _canView = _userCore.CanView(_formObject);
+            }
+            else
+            {
+                _canModify = _userCore.CanModify<TEntity>();
+                _canView = _userCore.CanView<TEntity>();
+            }
+
+            Result<List<string>> resR = _userCore.GetReadableAttrNames<TEntity>();
+            if (resR.IsErrorOrNull)
+            {
+                _snackBar?.Add(resR.ErrorResult, Severity.Error);
+                _canModify = false;
+                _canView = false;
+            }
+            else
+            {
+                _readablePropNames = resR.Value!;
+            }
+
+            Result<List<string>> resM = _userCore.GetEditableAttrNames<TEntity>();
+            if (resM.IsErrorOrNull)
+            {
+                _snackBar?.Add(resM.ErrorResult, Severity.Error);
+                _canModify = false;
+                _canView = false;
+            }
+            else
+            {
+                _editablePropNames = resM.Value!;
+            }
+            
+            _showSaveButton = ShowSaveButton && _canModify;
+            _showSaveAndCreate = _showSaveButton;
+            
+            await OnCanViewSet.InvokeAsync(_canView);
+            await OnCanModifySet.InvokeAsync(_canModify);
+        }
+        //InitFormObject();
+    }
+
+    #endregion
+
+    protected MarkupString BuildTitle()
+    {
+        string title = Title;
+
+        if (DynamicTitle != null)
+        {
+            title = DynamicTitle(_formObject);
+        }
+
+        if (title.Length == 0 && _formObject != null)
+        {
+            title = _formObject.Description;
+            if (title.Length == 0)
+            {
+                title = "...";
+            }
+        }
+
+        return new MarkupString(title);
+    }
+
+    /// <summary>
+    /// Текущая форма переводится в режим "есть изменения". Одновременно оповещается внешняя композитная форма (при наличии).
+    /// </summary>
+    public void SetDataChanged()
+    {
+        _dataChanged = true;
+
+        if(_compositeFormState != null && _formObject != null && _formObject.Id > 0)
+        {
+            // Композитную форму моментально оповещаем только если это существующий объект, 
+            // поскольку он уже отслеживается контекстом.
+            // Про новый объект мы оповестим в момент добавления в репозиторий
+            _compositeFormState.SetDirty(true);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Текущая форма переводится в режим "нет изменений".
+    /// Внешняя композитная форма (при наличии) не оповещается: если вдруг она владеет другими формами или данными,
+    /// изменения в этой дочке не должны привести к тому, чтобы вся более сложная форма перестала нуждаться в сохранении.
+    /// </summary>
+    public void SetDataUnchanged()
+    {
+        _dataChanged = false;
+        StateHasChanged();
+    }
+
+    public async Task SaveAndCreateAsync()
+    {
+        bool bSaved = await SaveEntityAsync();
+        if (bSaved)
+        {
+            _valFormObject = new TEntity();
+            _dataChanged = false;
+            StateHasChanged();
+        }
+    }
+
+    public async Task SaveAsync()
+    {
+        bool bSaved = await SaveEntityAsync();
+        if (bSaved)
+        {
+            StateHasChanged();
+        }
+    }
+
+    protected async Task<bool> SaveEntityAsync()
+    {
+        bool bSaved = true;
+        if (FormObjectRepository != null && _formObject != null)
+        {
+            Result res;
+            if (_formObject.Id == 0)
+            {
+                res = await FormObjectRepository.AddAsync(_formObject);
+
+                if(!res.IsError && _entitiesListFormState != null)
+                {
+                    // Отправляем в EntitiesList новый объект, он будет добавлен в список Entities для отображения.
+                    _entitiesListFormState.NotifyNewEntityAdded(_formObject);
+                }
+            }
+            else
+            {
+                res = await FormObjectRepository.UpdateAsync(_formObject);
+            }
+
+            if (res.IsError)
+            {
+                _snackBar?.Add($"Ошибка сохранения: {res.ErrorResult}", Severity.Error);
+                bSaved = false;
+            }
+            else
+            {
+                // Сохранение в хранилище делаем только в том случае, если форма автономна и не принадлежит к CompositeForm
+                // и если для нее не установлен режим работы OperateInMemory
+                if (_compositeFormState == null && !OperateInMemory)
+                {
+                    Result resSaved = await FormObjectRepository.ObjectStorage.SaveChangesAsync();
+                    if (resSaved.IsError)
+                    {
+                        _snackBar?.Add($"Ошибка сохранения в БД: {resSaved.ErrorResult}", Severity.Error);
+                        bSaved = false;
+                    }
+                    else
+                    {
+                        _snackBar?.Add($"Успешно сохранено", Severity.Success);
+                        _dataChanged = false;
+                    }
+                }
+                else
+                {
+                    // Оповещаем корневую композитную форму что данные изменились, и еще не сохранены в хранилище.
+                    _compositeFormState?.SetDirty(true);
+                    // А у себя говорим что все, мы на своем уровне все что могли - сохранили.
+                    _dataChanged = false;
+                }
+            }
+        }
+        else
+        {
+            _snackBar?.Add("Сохранение невозможно: отсутствует доступ к репозиторию", Severity.Warning);
+            bSaved = false;
+        }
+        return bSaved;
+    }
+
+    public async Task CancelAsync()
+    {
+        // EntitiesListFormState?.NotifyFormCompleted();
+
+        if (JSRuntime != null && CloseWindowOnCompleted)
+        {
+            await JSRuntime.InvokeVoidAsync("window.close");
+        }
+    }
+
+    // Go back in browser using Javascript on a Razor Page
+    private async Task GoBackAsync()
+    {
+        if (JSRuntime != null)
+        {
+            await JSRuntime.InvokeVoidAsync("history.back");
+        }
+    }
+
+    // private bool IsFieldInDisabledList(Field<TEntity> field)
+    // {
+    //     if (DisabledFields.Any())
+    //     {
+    //         if(DisabledFields.Contains(field))
+    //     }
+    // }
+}
+
+

@@ -1,0 +1,86 @@
+@using Frame.Domain
+
+<MudStack Row="true">
+    <MudTextField ReadOnly="true" Value="_workWeekObject.GetDescription()"/>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Primary"
+               Disabled="Disabled"
+               OnClick="ShowDialogAsync">@Title</MudButton>
+</MudStack>
+@* <MudTextField T="string" @bind-Value="WorkWeekJson"></MudTextField> *@
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    [CascadingParameter] public CompositeFormState? CompositeFormState { get; set; }
+    [Parameter] public string Title { get; set; } = "График работы";
+
+    [Parameter] public string WorkWeekJson { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    // {
+    //     get => _workWeekJson;
+    //     set => SetValue(value);
+    // }
+    [Parameter] public EventCallback<string> WorkWeekJsonChanged { get; set; }
+
+    private string _workWeekJson = "";
+    private WorkWeek _workWeekObject = new();
+
+    private void SetValue(WorkWeek wwObject)
+    {
+        _workWeekJson = wwObject.ToJson();
+        _workWeekObject = wwObject;
+        WorkWeekJsonChanged.InvokeAsync(_workWeekJson);
+        
+        // Если есть композитная форма - оповещаем ее, что есть изменения в списке
+        CompositeFormState?.SetDirty(true);
+    }
+    
+    // private void SetValue(string jsonValue)
+    // {
+    //     if (jsonValue != _workWeekJson)
+    //     {
+    //         _workWeekJson = jsonValue;
+    //         Result res = _workWeekObject.FromJson(_workWeekJson);
+    //         if (res.IsError)
+    //         {
+    //             _workWeekJson = "";
+    //             _workWeekObject = new();
+    //             _snackBar?.Add("Ошибка преобразования json в объект Weekdays", Severity.Error);
+    //         }
+    //         WorkWeekJsonChanged.InvokeAsync(_workWeekJson);
+    //         // Если есть композитная форма - оповещаем ее, что есть изменения в списке
+    //         CompositeFormState?.SetDirty(true);
+    //     }
+    // }
+    
+    protected override void OnParametersSet()
+    {
+        _workWeekJson = WorkWeekJson;
+        _workWeekObject.FromJson(_workWeekJson);
+    }
+    
+    private async Task ShowDialogAsync()
+    {
+        if (_dialogService != null && _snackBar != null)
+        {
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<WorkWeekDialog> parameters = new DialogParameters<WorkWeekDialog>
+            {
+                { x => x.Value, _workWeekObject }
+            };
+            var dialog = await _dialogService.ShowAsync<WorkWeekDialog>(Title, parameters, options);
+            var r = await dialog.Result;
+            if (r != null && !r.Canceled)
+            {
+                WorkWeek? tmp = (WorkWeek?) r.Data;
+                if (tmp != null)
+                {
+                    SetValue(tmp);
+                }
+                StateHasChanged();
+            }
+        }
+    }
+}

@@ -1,0 +1,22 @@
+﻿@* @page "/filedocument_type/{id:int}" *@
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Microsoft.AspNetCore.Components.Web
+
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<SimpleEditForm TEntity="FileDocumentType" 
+                TParentComponent="CF_FileDocumentType" 
+                Entity="FormObject"
+                Id="@Id">
+</SimpleEditForm>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Parameter] public FileDocumentType? FormObject { get; set; }
+
+}

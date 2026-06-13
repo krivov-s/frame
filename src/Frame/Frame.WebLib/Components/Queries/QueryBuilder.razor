@@ -1,0 +1,195 @@
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.Domain.Params
+@using Frame.Infrastructure.DBContext
+@using Frame.Shared
+@using Frame.WebLib.Components.Shared.AttrTree
+@using Microsoft.Extensions.Logging
+
+@if (SavedQuery != null && SavedQuery.EntityType != null)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="8">
+            @{
+                <MudTextField Label="Выбранные поля (для использования в запросе нужно добавить поля в секцию Select ниже)" 
+                              Variant="Variant.Outlined" 
+                              Value="@_selectedValuesAsString" 
+                              MaxLines="5"
+                              ReadOnly="false"
+                              AutoGrow="true"/>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <AttrTreeButton Variant="Variant.Filled" 
+                            Color="Color.Primary" 
+                            EntityType="SavedQuery.EntityType"
+                            Title="Выбрать поля из дерева"
+                            SelectedAttrs="_oneTimeSelectedAttrs"
+                            SelectedAttrsChanged="AddSelectedAttrs"/>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="BuildSelectList">Скопировать в Select</MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="12">
+            <MudStack Row="false">
+                <MudTextField Label="Секция Select запроса" Variant="Variant.Outlined" @bind-Value="SavedQuery.Select" MaxLines="5" AutoGrow="true"/>
+                <MudTextField Label="Фильтр" Variant="Variant.Outlined" @bind-Value="SavedQuery.Where" MaxLines="5" AutoGrow="true"/>
+                <MudTextField Label="Сортировка" Variant="Variant.Outlined" @bind-Value="SavedQuery.OrderBy" MaxLines="5" AutoGrow="true"/>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunQuery">Выполнить запрос</MudButton>
+                <MudTable Items="@_results" Bordered="true" Hover="true" Dense="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Результаты выполнения запроса</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context</MudTd>
+                    </RowTemplate>
+                    <PagerContent> <MudTablePager/></PagerContent>
+                </MudTable>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudAlert>Не установлен SavedQuery или у него не установлен тип объекта</MudAlert>
+}
+
+@code {
+    [Parameter] public SavedQuery? SavedQuery { get; set; }
+    
+    /// <summary>
+    /// Максимальная глубина вложенности при разворачивании дерева объектов
+    /// </summary>
+    [Parameter] public int MaxDepth { get; set; } = 3;
+    
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<QueryBuilder>? _logger { get; set; }
+    [Inject] private AppDbContext? _dbContext { get; set; }
+    [Inject] private IObjectStorageProvider? _storageProvider { get; set; }
+
+    //private string _selectedValuesAsString { get; set; } = "";
+
+    // private List<TreeItemData<PropertyData>> TreeItems { get; set; } = [];
+    private IReadOnlyCollection<AttrTreeDialog.PropertyData> _oneTimeSelectedAttrs { get; set; } = [];
+    private List<AttrTreeDialog.PropertyData> _selectedAttrs { get; set; } = [];
+    private string _selectedValuesAsString => string.Join(", ", _selectedAttrs);
+    
+    private List<object> _results { get; set; } = [];
+    private IObjectStorage? _varObjectStorage = null;
+
+    private IObjectStorage? _objectStorage
+    {
+        get
+        {
+            if (_varObjectStorage != null)
+            {
+                return _varObjectStorage;
+            }
+
+            if (_storageProvider == null)
+            {
+                return null;
+            }
+            
+            Result<IObjectStorage> resStg = _storageProvider.GetObjectStorage();
+            if (resStg.IsError || resStg.Value == null)
+            {
+                string err = $"Ошибка при получение IObjectStorage: {resStg.ErrorResult}";
+                _logger?.LogError(err);
+                _snackBar?.Add(err);
+                return null;
+            }
+
+            _varObjectStorage = resStg.Value;
+            return _varObjectStorage;
+        }
+    }
+    
+    
+    protected override void OnInitialized()
+    {
+    }
+
+    protected override void OnParametersSet()
+    {
+    }
+
+    private void AddSelectedAttrs(IReadOnlyCollection<AttrTreeDialog.PropertyData> attrsList)
+    {
+        foreach (var data in attrsList)
+        {
+            _selectedAttrs.Add(data);
+        }
+    }
+    
+    private void BuildSelectList()
+    {
+        if(SavedQuery == null) return;
+        
+        SavedQuery.Select = "";
+        string fields = "";
+        foreach (AttrTreeDialog.PropertyData propData in _selectedAttrs)
+        {
+            string attrPath = propData.AttrPath; 
+            string alias = propData.AttrPath;
+            bool complexPath = false;
+            if (alias.Contains('.'))
+            {
+                alias = alias.Replace('.', '_');
+                complexPath = true;
+            }
+
+            if (complexPath && !propData.IsNullable)
+            {
+                attrPath = $"np({propData.AttrPath})";
+            }
+            if (alias != attrPath)
+            {
+                alias = $"{attrPath} as {alias}";
+            }
+            
+            fields = (fields != "") ? string.Join(", ", [fields, alias]) : alias;
+        }
+        SavedQuery.Select = $"new ( {fields} )";
+        
+        _selectedAttrs.Clear();
+        
+        StateHasChanged();
+    }
+
+    private async Task RunQuery()
+    {
+        if(_objectStorage == null) return;
+        
+        if(SavedQuery == null || SavedQuery.EntityType == null) return;
+
+        if (SavedQuery.Select.Length == 0)
+        {
+            BuildSelectList();
+        }
+
+        try
+        {
+            ParamList pl = new();
+            pl.FromJson(SavedQuery.ParamListJson);
+
+            Result<List<dynamic>> resList = await _objectStorage.GetDynamicListAsync(SavedQuery, pl);
+            if (resList.IsError || resList.Value == null)
+            {
+                string err = $"Ошибка выполнения запроса: {resList.ErrorResult}";
+                _logger?.LogError(err);
+                _snackBar?.Add(err);
+                return;
+            }
+
+            _results = resList.Value;
+            StateHasChanged();
+        }
+        catch (Exception e)
+        {
+            _snackBar?.Add(e.Message, Severity.Error);
+        }
+
+    }
+}

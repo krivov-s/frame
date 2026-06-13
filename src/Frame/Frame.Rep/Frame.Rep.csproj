@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Title>Паспортизация ВСП/РФ</Title>
+	  <Description>Ведение сведений об объектах недвижимости региональной сети</Description>
+	  <Version>0.0.0-local</Version>
+	  <Owners>ЦК Развития портальных систем</Owners>
+	  <Authors>$(Owners)</Authors>
+	  <Company>РСХБ</Company>
+	  <tags></tags>
+	  <ProjectUrl Condition="'$(CI_PROJECT_URL)' != '' ">$(CI_PROJECT_URL)</ProjectUrl>
+	  <PackageProjectUrl>$(ProjectUrl)</PackageProjectUrl>
+    <OutputType>Library</OutputType>
+	  <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Frame.App\Frame.App.csproj" />
+    <ProjectReference Include="..\PptxTemplater\PptxTemplater.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="ClosedXML.Report" Version="0.2.12" />
+    <PackageReference Include="DocxTemplater" Version="2.5.0" />
+    <PackageReference Include="DocxTemplater.Images" Version="2.5.0" />
+    <PackageReference Include="DocxTemplater.Markdown" Version="2.5.0" />
+    <PackageReference Include="DynamicExpresso.Core" Version="2.19.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Views\FastReport\ShowReport.cshtml" />
+    <EmbeddedResource Include="Views\**\*.cshtml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Views\" />
+  </ItemGroup>
+
+</Project>

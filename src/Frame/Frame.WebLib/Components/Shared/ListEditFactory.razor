@@ -1,0 +1,76 @@
+﻿@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+
+@using Microsoft.AspNetCore.Components.Forms
+@using Frame.Domain.Entities.Core
+
+@if (_listEditType != null)
+{
+    @_dynamicComponent
+}
+else
+{
+    <MudAlert Severity="Severity.Warning">@($"Не удалось сконструировать поле ListEdit")</MudAlert>
+}
+
+@code {
+    /// <summary>
+    /// Значение параметра определяет, доступно ли поле для редактирования.
+    /// Должно быть установлено формой, в которую входит поле.
+    /// Обычно это делается в <see cref="SimpleEditForm{TEntity,TParentComponent}"/>
+    /// </summary>
+    [CascadingParameter(Name="CanModify")] bool _canModify { get; set; }
+    
+    [CascadingParameter] private EditContext? _editContext { get; set; }
+    /// <summary>
+    /// Метаданные по изменяемому атрибуту
+    /// </summary>
+    [Parameter] public Field<TEntity>? Field { get; set; }
+    /// <summary>
+    /// Основной объект, в котором изменяется атрибут
+    /// </summary>
+    [Parameter] public TEntity? Entity { get; set; }
+    //[Parameter] public Action? ValueChanged { get; set; }
+    [Parameter] public EventCallback ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    
+    /// <summary>
+    /// Хранилище, откуда будут считываться данные для списка. Если не задано - из FormState или из DI будет получено собственное отдельное хранилище.
+    /// </summary>
+    // [Parameter] public IObjectStorage? ObjectStorage { get; set; }
+
+    private RenderFragment _dynamicComponent => builder =>
+    {
+        if (_listEditType != null && Field != null)
+        {
+            builder.OpenComponent(0, _listEditType);
+            
+            builder.AddAttribute(1, "Entity", Entity);
+            builder.AddAttribute(2, "ValGetter", Field.ListGet?.Compile());
+            builder.AddAttribute(3, "ValSetter", Field.ListSet);
+            builder.AddAttribute(4, "ValueChanged", ValueChanged);
+            builder.AddAttribute(5, "Label", Field.HumanName);
+            builder.AddAttribute(6, "Disabled", Disabled || !_canModify);
+            builder.AddAttribute(7, "Variant", Variant);
+
+            builder.CloseComponent();
+        }
+    };
+
+    // Динамически конструируем тип будущего ListEdit
+    private Type? _typeList;
+    private Type? _listEditType
+    {
+        get
+        {
+            if(_typeList == null)
+            {
+                _typeList = (Field != null && Field.ListItemType != null)
+                           ? typeof(ListEdit<,>).MakeGenericType(typeof(TEntity), Field.ListItemType)
+                           : null;
+            }
+
+            return _typeList;
+        }
+    }
+}

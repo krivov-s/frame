@@ -1,0 +1,119 @@
+﻿@using Frame.Domain.Params
+
+<MudDialog>
+    <DialogContent>
+        <MudCard>
+            <MudCardContent>
+                <MudDataGrid Items="@_paramList.AsDictionary()">
+                    <Columns>
+                        <PropertyColumn Property="x => x.Key" Title="Имя" />
+                        <PropertyColumn Property="x => x.Value.TypeParam" Title="Тип значения"/>
+                        <PropertyColumn Property="x => x.Value.IsHidden" Title="Скрытый параметр"/>
+                        <PropertyColumn Property="x => x.Value.Value" Title="Значение"/>
+                        <TemplateColumn Filterable="false" Sortable="false">
+                            <CellTemplate Context="ctx">
+                                <MudStack Row="true">
+                                    <MudTooltip Text="Редактировать параметр" Arrow="true" Color="Color.Default">
+                                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Edit" OnClick="(_) => EditParamAsync(ctx.Item)"/>
+                                    </MudTooltip>
+                                    <MudTooltip Text="Удалить параметр" Arrow="true" Color="Color.Default">
+                                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" OnClick="(_) => DeleteParam(ctx.Item)"/>
+                                    </MudTooltip>
+                                </MudStack>
+                            </CellTemplate>
+                        </TemplateColumn>
+                        
+                    </Columns>
+                </MudDataGrid>                
+            </MudCardContent>
+            <MudCardActions>
+                <MudStack Row="true">
+                    <MudButton OnClick="AddParamAsync" Variant="Variant.Outlined" Color="Color.Primary">Добавить параметр</MudButton>
+                    <MudButton OnClick="SaveParamListAsync" Variant="Variant.Outlined" Color="Color.Success">Сохранить список параметров</MudButton>
+                    <MudButton OnClick="DiscardChanges" Variant="Variant.Outlined" Color="Color.Secondary">Отменить все изменения</MudButton>
+                </MudStack>
+            </MudCardActions>
+        </MudCard>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    [CascadingParameter] private IMudDialogInstance? _mudDialog { get; set; }
+    [Parameter] public ParamList? Value { get; set; }
+    [Parameter] public EventCallback<ParamList> ValueChanged { get; set; }   
+    
+    private ParamList _paramList = new ();
+    private string _paramName = "";
+    private ParamData? _paramValue;
+
+    protected override void OnInitialized()
+    {
+        _paramList = Value ?? new();
+    }
+
+    
+    private async Task AddParamAsync()
+    {
+        _paramName = "Param1";
+        _paramValue = new ("String value", false, "Наименование");
+        await ShowDialogAsync(false);
+    }
+
+    private async Task EditParamAsync(KeyValuePair<string, ParamData> kvp)
+    {
+        _paramName = kvp.Key;
+        _paramValue = kvp.Value;
+        await ShowDialogAsync(true);
+    }
+
+    private void DeleteParam(KeyValuePair<string, ParamData> kvp)
+    {
+        _paramList.RemoveParameter(kvp.Key);
+        StateHasChanged();
+    }
+
+    private async Task ShowDialogAsync(bool isEditing)
+    {
+        if (_dialogService != null && _snackBar != null)
+        {
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium };
+            DialogParameters<ParamListDesignerValueDialog> parameters = new DialogParameters<ParamListDesignerValueDialog>();
+            parameters.Add("Value", _paramValue);
+            parameters.Add("Name", _paramName);
+            parameters.Add("IsEditing", isEditing);
+            var dialog = await _dialogService.ShowAsync<ParamListDesignerValueDialog>("Параметр", parameters, options);
+            var r = await dialog.Result;
+            if (r != null && !r.Canceled)
+            {
+                if (r.Data is Dictionary<string, object?> paramNameAndValue)
+                {
+                    paramNameAndValue.TryGetValue(nameof(ParamListDesignerValueDialog.Name), out object? oName);
+                    paramNameAndValue.TryGetValue(nameof(ParamListDesignerValueDialog.Value), out object? oValue);
+                    if (oName != null && oValue != null)
+                    {
+                        string name = (string)oName;
+                        ParamData data = (ParamData)oValue;
+                        _paramList.SetParamValue(name, data);
+                        StateHasChanged();
+                    }
+                }
+            }
+        }
+    }
+    
+    private async Task SaveParamListAsync()
+    {
+        Value = _paramList;
+        await ValueChanged.InvokeAsync(Value);
+        _mudDialog?.Close(DialogResult.Ok(_paramList));
+    }
+
+    private void DiscardChanges()
+    {
+        _mudDialog?.Cancel();
+    }
+    
+}

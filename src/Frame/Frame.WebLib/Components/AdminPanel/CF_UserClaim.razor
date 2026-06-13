@@ -1,0 +1,48 @@
+@using Frame.Domain.Entities.Core.Security
+
+<SimpleEditForm @ref="_simpleEditForm"
+                TEntity="UserClaim"
+                TParentComponent="CF_UserClaim"
+                Title="@(_buildTitle())"
+                Entity="FormObject">
+    @if (FormObject != null && _simpleEditForm != null)
+    {
+        <MudCard>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" sm="12">
+                        <RefEditFactory TEntity="UserClaim" 
+                                        Entity="FormObject" 
+                                        Field="UserClaim.Meta.User"
+                                        Disabled="true"
+                                        ValueChanged="_simpleEditForm.SetDataChanged"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="UserClaim" Entity="FormObject" Field="UserClaim.Meta.ClaimType"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="UserClaim" 
+                                          Entity="FormObject" 
+                                          Field="UserClaim.Meta.ClaimValue"
+                                          Lines="10"
+                                          MaxLines="20"
+                                          AutoGrow="true"/>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    }
+</SimpleEditForm>
+
+@code {
+    [Parameter] public UserClaim? FormObject { get; set; } 
+
+    private SimpleEditForm<UserClaim, CF_UserClaim>? _simpleEditForm { get; set; }
+    
+    private string _buildTitle()
+    {
+        return $"Claim для пользователя {FormObject?.User?.FIO}".Trim();
+    }
+
+    
+}

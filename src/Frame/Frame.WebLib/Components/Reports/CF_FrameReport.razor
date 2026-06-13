@@ -1,0 +1,351 @@
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.FileRepositories
+@using Frame.App.IEntityLoaders
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Reports
+@using Frame.Domain.Entities.Metadata
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.WebLib.Components.Params
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Logging
+@using Frame.WebLib.Components.Scripting
+@using Frame.WebLib.Components.Queries
+@using Microsoft.JSInterop
+
+<SimpleEditForm @ref="_form"
+                TEntity="FrameReport"
+                TParentComponent="CF_FrameReport"
+                Entity="_formObject"
+                ShowTitle="false"
+                OnCanViewSet="_canViewSet"
+                OnCanModifySet="_canModifySet">
+    @if (_formObject != null && _form != null)
+    {
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+            @* ========== TabPanel Общие сведения =========== *@
+            <MudTabPanel Text="Общие сведения">
+                <MudGrid>
+                    @* ========== Line 0 ==========  *@
+                    @if (_savingFileToStorage)
+                    {
+                        <MudItem xs="12" sm="3">
+                            <MudAlert Severity="Severity.Info">Идет сохранение образца отчета в хранилище</MudAlert>
+                        </MudItem>
+                        <MudItem xs="12" sm="1">
+                            <MudProgressCircular Color="Color.Default" Indeterminate="true"/>
+                        </MudItem>
+                        <MudFlexBreak/>
+                    }
+                    @* ========== Line 1 ==========  *@
+                    <MudItem xs="12" sm="8">
+                        <FieldEditFactory TEntity="FrameReport" Entity="_formObject" Field="FrameReport.Meta.Name"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <MudSelect T="string" 
+                                   @bind-Value="_formObject.EntityTypeName"
+                                   Clearable="true"
+                                   Disabled="!_canModify"
+                                   Label="@FrameReport.Meta.EntityTypeName.HumanName" 
+                                   class="ma-1" 
+                                   Variant="Variant.Outlined">
+                            @foreach (string entityType in EntityMetadata.GetAllEntitiesClassNames())
+                            {
+                                <MudSelectItem Value="@entityType">@entityType</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <RefEditFactory TEntity="FrameReport" Entity="FormObject"
+                                        Field="FrameReport.Meta.FrameReportType"
+                                        ValueChanged="_form.SetDataChanged"></RefEditFactory>
+                    </MudItem>
+                    <MudFlexBreak/>
+                    @* ========== Line 2 ==========  *@
+                    <MudItem xs="12" sm="4">
+                        <RefEditFactory TEntity="FrameReport" Entity="FormObject"
+                                        Field="FrameReport.Meta.ReportTemplate"
+                                        ValueChanged="_form.SetDataChanged"/>
+                        @* @if (_canUpload) *@
+                        @* { *@
+                        @*     <MudFileUpload T="IBrowserFile" Accept=".xlsx, .pptx" FilesChanged="OnReportFileChangedAsync"> *@
+                        @*         <ActivatorContent> *@
+                        @*             <MudTooltip Text="Нажмите для выбора образца отчета и загрузки его в хранилище"> *@
+                        @*                 <MudFab Disabled="!_canUpload" *@
+                        @*                         Size="Size.Medium" *@
+                        @*                         StartIcon="@Icons.Material.Filled.UploadFile"/> *@
+                        @*             </MudTooltip> *@
+                        @*         </ActivatorContent> *@
+                        @*     </MudFileUpload> *@
+                        @* } *@
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <RefEditFactory TEntity="FrameReport" Entity="FormObject"
+                                        Field="FrameReport.Meta.SavedQuery"
+                                        ValueChanged="_form.SetDataChanged"></RefEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <RefEditFactory TEntity="FrameReport" Entity="FormObject"
+                                        Field="FrameReport.Meta.ScriptCommand"
+                                        ValueChanged="_form.SetDataChanged"></RefEditFactory>
+                    </MudItem>
+                    <MudFlexBreak/>
+                    @* ========== Line 3 ==========  *@
+                    <MudItem xs="12" sm="8">
+                        <FieldEditFactory TEntity="FrameReport" Entity="_formObject" Field="FrameReport.Meta.Descr" MaxLines="3"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <FieldEditFactory TEntity="FrameReport" Entity="_formObject" Field="FrameReport.Meta.UserTag"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <FieldEditFactory TEntity="FrameReport" Entity="_formObject" Field="FrameReport.Meta.SystemTag"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <MudStack Row="true">
+                            @if (_canUpDownLoad)
+                            {
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           OnClick="DownloadReportFileAsync"
+                                           StartIcon="@Icons.Material.Filled.CloudDownload">
+                                    Скачать шаблон
+                                </MudButton>
+                                <MudFileUpload T="IBrowserFile" Accept=".xlsx, .pptx, .docx" FilesChanged="OnReportFileChangedAsync">
+                                    <ActivatorContent>
+                                        <MudTooltip Text="Нажмите для выбора образца отчета и загрузки его в хранилище">
+                                            <MudButton Disabled="!_canUpDownLoad"
+                                                       Color="Color.Primary"
+                                                       Variant="Variant.Outlined"
+                                                       StartIcon="@Icons.Material.Filled.UploadFile">
+                                                Загрузить шаблон
+                                            </MudButton>
+                                        </MudTooltip>
+                                    </ActivatorContent>
+                                </MudFileUpload>
+                            }
+                            <CodeEditorButton @bind-Value="_formObject.ParamListJson"
+                                              Disabled="!_canModify"
+                                              Title="Редактор списка параметров"
+                                              Language="AceLanguage.json"/>
+                            <ParamListDesignerButton Title="Дизайнер списка параметров"
+                                                     Disabled="!_canModify"
+                                                     Color="Color.Primary"
+                                                     Variant="Variant.Outlined"
+                                                     Value="@_formObject.ParamListJson"
+                                                     ValueChanged="val => { _formObject.ParamListJson = val; _form?.SetDataChanged(); StateHasChanged(); }"/>
+                            <ParamListEditorButton Title="Тестирование списка параметров"
+                                                   Disabled="!_canModify"
+                                                   Color="Color.Primary"
+                                                   Variant="Variant.Outlined"
+                                                   ShowSaveButton="false"
+                                                   ShowCancelButton="true"
+                                                   CancelButtonText="Закрыть"
+                                                   Value="@_formObject.ParamListJson"/>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+            @if (FormObject != null)
+            {
+                if (FormObject.ScriptCommand != null && FormObject.ScriptCommandId is > 0)
+                {
+                    <MudTabPanel Text="Скрипт-операция">
+                        <CF_ScriptCommand FormObject="FormObject.ScriptCommand" ShowCloseButton="false" ShowTitle="false"/>
+                    </MudTabPanel>
+                }
+
+                if (FormObject.SavedQuery != null && FormObject.SavedQueryId is > 0)
+                {
+                    <MudTabPanel Text="Сохраненный запрос">
+                        <CF_SavedQuery FormObject="FormObject.SavedQuery" ShowCloseButton="false" ShowTitle="false"/>
+                    </MudTabPanel>
+                }
+                
+                <MudTabPanel Text="Группы отчётов">
+                    <CF_FrameReportGroups CurrentReport="_formObject"></CF_FrameReportGroups>
+                </MudTabPanel>                
+            }
+            @* <MudTabPanel Text="Список параметров"> *@
+            @*     <MudGrid> *@
+            @*         <MudItem xs="12" sm="12"> *@
+            @*         </MudItem> *@
+            @*     </MudGrid> *@
+            @* </MudTabPanel> *@
+        </MudTabs>
+
+    }
+</SimpleEditForm>
+
+<script>
+    window.downloadFileDirectly = async (url, fileName) => {
+        try
+        {
+            let response = await fetch(url);
+            if (!response.ok)
+            {
+                throw new Error(await response.text());
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+
+            window.URL.revokeObjectURL(downloadUrl);
+        }
+        catch (error)
+        {
+            console.error("Ошибка при скачивании файла:", error.message);
+            alert("Ошибка: " + error.message);
+        }
+    };
+</script>
+
+
+@code {
+    /// <summary>
+    /// Общее объектное хранилище, определенное родительской формой. Если задано - обязательно используется.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+
+    [Inject] IJSRuntime? _jsRuntime { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<CF_FrameReport>? _logger { get; set; }
+    [Inject] IFileDocumentService? _fileDocumentService { get; set; }
+    [Inject] IFrameSettingsLoader? _frameSettingsLoader { get; set; }
+    [Inject] CoreWebSettings? _coreWebSettings { get; set; }
+
+    /// <summary>
+    /// Полностью прогруженный (для существующего), готовый к редактированию объект недвижимости
+    /// </summary>
+    [Parameter] public FrameReport? FormObject { get; set; }
+
+    private FrameReport? _formObject = null;
+    private SimpleEditForm<FrameReport, CF_FrameReport>? _form { get; set; }
+
+    private bool _canView = true;
+    private bool _canModify = true;
+    
+    private bool _savingFileToStorage = false;
+    private bool _canUpDownLoad
+    {
+        get
+        {
+            if (_formObject != null && _formObject.Id > 0 && _canModify) 
+                                    // && _formObject.ReportTemplate != null 
+                                    // && _formObject.ReportTemplate.Id > 0)
+                return true;
+            else
+                return false;
+        }
+    }
+    
+    private FrameSettings? _frameSettings { get; set; }
+    
+    protected override void OnInitialized()
+    {
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_frameSettingsLoader != null && _sharedObjectStorage != null)
+        {
+            _frameSettings = await _frameSettingsLoader.LoadFrameSettingsAsync(_sharedObjectStorage);
+        }
+    }
+
+
+    private void _canViewSet(bool canView) => _canView = canView;   
+    private void _canModifySet(bool canModify) => _canModify = canModify;
+
+    private async Task DownloadReportFileAsync()
+    {
+        if (_formObject != null)
+        {
+            if (_formObject.ReportTemplate == null)
+            {
+                _snackBar?.Add("Шаблон отчета отсутствует", Severity.Info);
+                return;
+            }
+            Result res = await Helpers.DownloadFileAsync(_jsRuntime, _formObject.ReportTemplate, _logger, _coreWebSettings);
+            if (res.IsError)
+            {
+                _snackBar?.Add(res.ErrorResult, Severity.Error);
+            }
+        }
+    }
+        
+    private async Task OnReportFileChangedAsync(IBrowserFile? fileFromBrowser)
+    {
+        try
+        {
+            if (fileFromBrowser != null && _formObject != null && 
+                _form != null && _fileDocumentService != null &&
+                _sharedObjectStorage != null && _frameSettings != null)
+            {
+                if (_formObject.ReportTemplate == null)
+                {
+                    if (_formObject.ReportTemplateId > 0)
+                    {
+                        string err = "Текущий объект FrameReport не полностью загружен: отсутствует объект ReportTemplate";
+                        _logger?.LogError(err);
+                        _snackBar?.Add(err, Severity.Error);
+                        return;
+                    }
+
+                    _formObject.ReportTemplate = new();
+                }
+
+                // Инициализируем параметры FileDocument шаблона отчета
+                // Имя файл-документа = Имя отчета
+                _formObject.ReportTemplate.DocumentName = _formObject.Name;
+                _formObject.ReportTemplate.FileDocumentTypeId = _frameSettings.ReportFileDocumentTypeId;
+                _formObject.ReportTemplate.OwnerKey = _formObject.Key;
+                
+                Result res;
+                _savingFileToStorage = true;
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    await using (Stream fileStream = fileFromBrowser.OpenReadStream(fileFromBrowser.Size))
+                    {
+                        await fileStream.CopyToAsync(ms);
+                    }
+                    ms.Position = 0;
+                    res = await _fileDocumentService.SaveFileToDocumentAsync(
+                        _formObject.ReportTemplate, ms, fileFromBrowser.Name, _sharedObjectStorage);
+                }
+
+                if (!res.IsError)
+                {
+                    _snackBar?.Add("Загрузка шаблона отчета в хранилище успешно завершена!", Severity.Success);
+                    StateHasChanged();
+                }
+                else
+                {
+                    _snackBar?.Add(res.ErrorResult, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            string strError = $"Ошибка загрузки шаблона отчета в хранилище: {ex.Message}";
+            _logger?.LogError(strError);
+            _snackBar?.Add(strError, Severity.Error);
+        }
+        finally
+        {
+            _savingFileToStorage = false;
+        }
+    }
+}

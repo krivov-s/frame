@@ -1,0 +1,51 @@
+﻿@page "/user_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+
+<PageTitle>Список пользователей</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="User"
+                    TParentComponent="PL_User"
+                    Title="Список пользователей"
+                    ConfigureQuerySpecification="spec => spec
+                        .Include(u => u.Division)
+                        .Include(u => u.UsersRoles)
+                        .ThenInclude(u => u.Role)
+                        .OrderByAsc(u => u.Login)"
+                    Operations="_operationList"
+                    EditMode="EntitiesListEditMode.ExternalUri">
+    <GridContent>
+        <PropertyColumn T="@User" TProperty="@string" Property="x => x.Login" Title="@User.Meta.Login.HumanName" Editable="true" Required="User.Meta.Login.Required" />
+        <PropertyColumn T="@User" TProperty="@string" Property="x => x.FIO" Title="@User.Meta.FIO.HumanName" Editable="true" Required="User.Meta.FIO.Required" />
+        <PropertyColumn T="@User" TProperty="@string"
+                        Property="x => (x.Division != null) ? x.Division.Description : string.Empty"
+                        Title="@User.Meta.Division.HumanName" />
+        <PropertyColumn T="@User" TProperty="@string" Property="x => x.UserRolesNames" Title="@User.Meta.UserRolesNames.HumanName" Editable="true" Required="User.Meta.UserRolesNames.Required" />
+        <PropertyColumn T="@User" TProperty="@string" Property="x => x.Comment" Title="@User.Meta.Comment.HumanName" Editable="true" Required="User.Meta.Comment.Required" />
+        <PropertyColumn T="@User" TProperty="@bool" Property="x => x.Disabled" Title="@User.Meta.Disabled.HumanName" Editable="true" Required="User.Meta.Disabled.Required" />
+
+    </GridContent>
+
+</EntitiesListDetail>
+
+@code {
+    private Dictionary<string, EntitiesListOperation<User>> _operationList = [];
+
+    protected override void OnInitialized()
+    {
+        _operationList.Add("Аудит действий пользователя", new()
+        {
+            ActiveOnCurrent = true,
+            Href = "audit?UserLogin={Entity.Login}",
+            NewWindow = true
+        });
+    }
+
+}

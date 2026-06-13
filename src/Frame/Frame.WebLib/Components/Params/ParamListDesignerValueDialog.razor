@@ -1,0 +1,173 @@
+﻿@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Metadata
+@using Frame.Domain.Params
+
+<MudDialog>
+    <TitleContent>
+        @{
+            string paramTitle = (IsEditing ? "Редактировать параметр" : "Добавить параметр");
+        }
+        <MudText Typo="Typo.h6">@paramTitle</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_paramData != null)
+        {
+            <MudForm @bind-IsValid="@_success">
+                <MudGrid>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField Label="Имя" @bind-Value="_name" Disabled="IsEditing"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField Label="'Человеческое' имя" @bind-Value="_paramData.HumanName"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSwitch T="bool" 
+                                   Label="Не показывать пользователю" 
+                                   @bind-Value="_paramData.IsHidden" 
+                                   Color="Color.Primary"
+                                   UncheckedColor="Color.Default"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        @* <MudTextField Label="Тип" @bind-Value="_value.TypeParam"/> *@
+                        <CascadingValue Name="CanModify" Value="true">
+                        <TypeSelectControl @bind-FullTypeName="_paramData.TypeParam"
+                                           ValueChanged="type => OnTypeValueChanged(type)"
+                                           ShowSimpleTypes="true"
+                                           ShowFrameTypes="true"/>
+                        </CascadingValue>
+                        
+                    </MudItem>
+                    @if (_valueType != null)
+                    {
+                        // Значение показываем только если параметр не является файлом
+                        if (_valueType != typeof(FileParam))
+                        {
+                            <MudItem xs="12" sm="12">
+                                <DynamicEditControl Label="Значение"
+                                                    @bind-Value="_paramData.Value"
+                                                    Where="@_paramData.Where"
+                                                    OrderBy="@_paramData.OrderBy"
+                                                    ValueType="@_valueType"/>
+                            </MudItem>
+                        }
+                        // Опции для выбора значений из БД показываем только для BaseEntity-derived
+                        if (_valueType.IsSubclassOf(typeof(BaseEntity)))
+                        {
+                            <MudItem xs="12" sm="12">
+                                <MudTextField Label="Секция Select" @bind-Value="_paramData.Select"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="12">
+                                <MudTextField Label="Секция Where" @bind-Value="_paramData.Where"/>
+                            </MudItem>
+                            <MudItem xs="12" sm="12">
+                                <MudTextField Label="Секция OrderBy" @bind-Value="_paramData.OrderBy"/>
+                            </MudItem>
+                        }
+                    }
+                </MudGrid>
+            </MudForm>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_paramData != null)
+        {
+            <MudButton OnClick="SaveParamAsync" Disabled="@(!_success)" Color="Color.Primary">Сохранить</MudButton>
+            <MudButton OnClick="CloseDialog" Color="Color.Secondary">Отмена</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+
+    [Parameter] public bool IsEditing { get; set; }
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public EventCallback<string> NameChanged { get; set; }
+    [Parameter] public ParamData? Value { get; set; }
+    [Parameter] public EventCallback<ParamData> ValueChanged { get; set; }
+
+    private string _name { get; set; } = "";
+    private ParamData? _paramData { get; set; }
+    private bool _success;
+    
+    private Type? _varValueType;
+    private Type? _valueType
+    {
+        get
+        {
+            if (_varValueType != null)
+            {
+                return _varValueType;
+            }
+
+            if (_paramData != null && !string.IsNullOrEmpty(_paramData.TypeParam))
+            {
+                try
+                {
+                    _varValueType = Type.GetType(_paramData.TypeParam);
+                }
+                catch
+                {
+                    ;
+                }
+            }
+
+            return _varValueType;
+        }
+    }
+    
+    protected override void OnParametersSet()
+    {
+        _name = Name ?? "NewStringParam";
+        _paramData = (Value != null) ? new ParamData(Value) : new ParamData("String value");
+    }
+
+    private async Task SaveParamAsync()
+    {
+        await NameChanged.InvokeAsync(_name);
+        await ValueChanged.InvokeAsync(_paramData);
+        Dictionary<string, object?> paramNameAndValue = [];
+        paramNameAndValue[nameof(Name)] = _name;
+        paramNameAndValue[nameof(Value)] = _paramData;
+        _mudDialog?.Close(DialogResult.Ok(paramNameAndValue));
+    }
+
+    private void CloseDialog()
+    {
+        _mudDialog?.Cancel();
+    }
+
+    /// <summary>
+    /// При изменении типа пытаемся привести значение к новому типу. Если получается - норм. Если нет - ошибка.
+    /// </summary>
+    /// <param name="type"></param>
+    private void OnTypeValueChanged(Type type)
+    {
+        if (_paramData != null)
+        {
+            try
+            {
+                _paramData.TypeParam = EntityMetadata.BiuldExtTypeName(type);
+                _varValueType = type;
+                object? newVal = Convert.ChangeType(_paramData.Value, type);
+                if (newVal != null)
+                {
+                    _paramData.Value = newVal;
+                }
+            }
+            catch
+            {
+                if (type.IsValueType)
+                {
+                    _paramData.Value = Activator.CreateInstance(type);
+                }
+                else
+                {
+                    // Скорее всего это BaseEntity, в значении хранится Id, его обнуляем.
+                    _paramData.Value = null;
+                }
+            }
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,116 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+@if (CurrentQuery != null)
+{
+    <EntitiesListDetail TEntity="SavedQueryGroupLink"
+                        TParentComponent="CF_SavedQueryGroups"
+                        Title="Список сохранённых запросов"
+                        EditMode="EntitiesListEditMode.FormContent"
+                        ShowEditButton="false"
+                        Entities="CurrentQuery.SavedQueryGroups"
+                        OnAddNewAsync="_addNewSavedQueryGroupLink">
+        <GridContent>
+            <PropertyColumn T="@SavedQueryGroupLink" TProperty="@string" Property="x => x.SavedQueryGroup != null ? x.SavedQueryGroup.Name : string.Empty" Title="@SavedQueryGroup.Meta.Name.HumanName"></PropertyColumn>
+        </GridContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public SavedQuery? CurrentQuery { get; set; }
+
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+
+
+    private SimpleEditForm<SavedQueryGroup, CF_SavedQueryGroups>? _formSavedQueryGroup { get; set; }
+
+    protected readonly Dictionary<string, EntitiesListOperation<SavedQueryGroupLink>> Commands = [];
+
+    private async Task<Result<SavedQueryGroupLink>> _addNewSavedQueryGroupLink(IBaseRepository<SavedQueryGroupLink>? repository)
+    {
+        Result<SavedQueryGroupLink> res = Result<SavedQueryGroupLink>.Success(null);
+        SavedQuery? report = (SavedQuery?)CurrentQuery;
+
+        if (_dialogService != null && repository != null && CurrentQuery != null)
+        {
+            try
+            {
+                IObjectStorage objectStorage = repository.ObjectStorage;
+
+                DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+                DialogParameters<SelectDialog<SavedQueryGroup>> parameters = new DialogParameters<SelectDialog<SavedQueryGroup>>();
+
+                Result<List<SavedQueryGroup>> resRole = await objectStorage.GetListAsync<SavedQueryGroup>("Чтение всех групп");
+                if (resRole.IsErrorOrNull)
+                {
+                    _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+                    return res;
+                }
+
+                List<SavedQueryGroup> queries = resRole.Value!;
+                if (queries.Count == 0)
+                {
+                    _snackBar?.Add("Не найдены сохранённые запросы для добавления", Severity.Info);
+                    return res;
+                }
+
+                var excludedIDs = new HashSet<int>(CurrentQuery.SavedQueryGroups.Select(p => p.SavedQuery!.Id));
+                var groupsClean = queries.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+                if (groupsClean.Count > 0)
+                {
+                    parameters.Add(x => x.Items, groupsClean);
+                    var dialog = await _dialogService.ShowAsync<SelectDialog<SavedQueryGroup>>("Выберите группу", parameters, options);
+                    var result = await dialog.Result;
+                    if (result is { Canceled: false })
+                    {
+                        SavedQueryGroup? group = (SavedQueryGroup?)result.Data;
+                        if (group != null)
+                        {
+                            SavedQueryGroupLink rel = new()
+                            {
+                                SavedQueryGroupId = group.Id,
+                                SavedQueryGroup = group,
+                                SavedQueryId = CurrentQuery.Id,
+                                SavedQuery = CurrentQuery
+                            };
+                            CurrentQuery.SavedQueryGroups.Add(rel);
+                            objectStorage.Add(rel);
+                            _compositeFormState?.SetDirty(true);
+                            return Result<SavedQueryGroupLink>.Success(rel);
+                        }
+                    }
+                }
+                else
+                {
+                    _snackBar?.Add($"Отсутствуют группы для добавления", Severity.Info);
+                }
+            }
+            catch (Exception exc)
+            {
+                var daatt = exc;
+            }
+
+            return res;
+        }
+        else
+        {
+            _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+        }
+        return res;
+    }
+}
+

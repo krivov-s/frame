@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	  <TargetFramework>net9.0</TargetFramework>
+	  <ImplicitUsings>enable</ImplicitUsings>
+	  <Nullable>enable</Nullable>
+	  <Title>Паспортизация ВСП/РФ</Title>
+	  <Description>Ведение сведений об объектах недвижимости региональной сети</Description>
+	  <Version>0.0.0-local</Version>
+	  <Owners>ЦК Развития портальных систем</Owners>
+	  <Authors>$(Owners)</Authors>
+	  <Company>РСХБ</Company>
+	  <tags></tags>
+	  <ProjectUrl Condition="'$(CI_PROJECT_URL)' != '' ">$(CI_PROJECT_URL)</ProjectUrl>
+	  <PackageProjectUrl>$(ProjectUrl)</PackageProjectUrl>
+	  <OutputType>Library</OutputType>
+	  <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.6.13" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="EzSmb" Version="1.3.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="9.0.8" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="SmartFormat" Version="3.6.0" />
+    <PackageReference Include="SMBLibrary" Version="1.5.4.1" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.6.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Frame.App\Frame.App.csproj" />
+  </ItemGroup>
+
+</Project>

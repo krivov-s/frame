@@ -1,0 +1,371 @@
+@page "/db_console"
+
+@using System.Data
+@using Frame.App.Security
+@using Frame.Infrastructure.DBContext
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@inherits ComponentBase
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+@* ---------- Параметры ---------- *@
+@code {
+    [Parameter] public int CommandTimeoutSeconds { get; set; } = 60;
+    [Parameter] public string? InitialSql { get; set; } = """ select * from public."Division" where "Id" > 0 Order By "Name" Desc """;
+}
+
+<MudPaper Class="pa-4 d-flex flex-column gap-3">
+    @if (_adminCodeAccepted)
+    {
+        <!-- ВЕРХ: Ввод SQL + кнопки -->
+        <MudText Typo="Typo.h6">Sql Console</MudText>
+
+        <MudTextField @bind-Value="_sql"
+                      Lines="10"
+                      Placeholder="Введите SQL (один запрос) и нажмите «Выполнить»"
+                      Variant="Variant.Outlined"
+                      FullWidth="true"
+                      ReadOnly="@_isExecuting"
+                      Class="sql-input" />
+
+        <div class="d-flex align-items-center gap-2">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@(_isExecuting || string.IsNullOrWhiteSpace(_sql))"
+                       OnClick="_executeAsync">
+                @if (_isExecuting)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                }
+                Выполнить
+            </MudButton>
+
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       Disabled="!_isExecuting"
+                       OnClick="_cancel">
+                Отмена
+            </MudButton>
+
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Secondary"
+                       Disabled="@(_isExecuting && string.IsNullOrWhiteSpace(_sql))"
+                       OnClick="@(() => { _sql = string.Empty; })">
+                Очистить ввод
+            </MudButton>
+        </div>
+
+        <!-- НИЗ: Результат / Ошибка -->
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">
+                <b>Ошибка:</b> @_error
+            </MudAlert>
+        }
+        else if (!string.IsNullOrWhiteSpace(_infoMessage))
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">
+                @_infoMessage
+            </MudAlert>
+        }
+
+        @if (_isSelect && _rows.Count > 0)
+        {
+            <MudPaper Class="pa-0">
+                <MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Class="sql-result-table">
+                    <HeaderContent>
+                        @foreach (var col in _columns)
+                        {
+                            <MudTh>@col</MudTh>
+                        }
+                    </HeaderContent>
+                    <RowTemplate>
+                        @foreach (var col in _columns)
+                        {
+                            <MudTd>
+                                @_getCellValue(context, col)
+                                @* @(context.TryGetValue(col, out var value) ? FormatValue(value) : "") *@
+                            </MudTd>
+                        }
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+        else if (_isExecuting)
+        {
+            <div class="d-flex align-center">
+                <MudProgressCircular Indeterminate="true" Size="Size.Medium" Class="me-2" />
+                Выполнение...
+            </div>
+        }
+        else if (_wasExecuted && !_isSelect && string.IsNullOrWhiteSpace(_error))
+        {
+            <!-- Для не-SELECT мы уже показали текст в _infoMessage -->
+        }
+    }
+    else
+    {
+        <MudCard>
+            <MudTextField @bind-Value="_adminCode" 
+                          name="AdminCode" 
+                          Label="Код доступа" ShrinkLabel="true" 
+                          Variant="Variant.Outlined" 
+                          InputType="InputType.Password" class="ma-1"/>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       OnClick="_checkAdminCode" class="ma-1">Проверить код администратора</MudButton>
+        </MudCard>
+    }
+    
+</MudPaper>
+
+@code
+{
+    [Inject] AppDbContext? _dbContext { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<PF_DbConsole>? _logger { get; set; }
+    [Inject] IGetCurrentUserNameService? _getCurrentUserNameService { get; set; }
+
+    private string _sql = string.Empty;
+
+    private readonly List<string> _columns = [];
+    private readonly List<Dictionary<string, object?>> _rows = [];
+
+    private bool _isExecuting;
+    private bool _isSelect;
+    private bool _wasExecuted;
+
+    private string? _error;
+    private string? _infoMessage;
+
+    private CancellationTokenSource? _cts;
+
+    private bool _adminCodeAccepted { get; set; }
+    private string _defaultAdminCode { get; set; } = "65535";
+    private string _adminCode { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrWhiteSpace(InitialSql))
+            _sql = InitialSql!;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        string user = await _getCurrentUserNameAsync();
+        
+        string msg = $"DbConsole opened by {user}";
+        _logger?.LogInformation("{Msg}", msg);
+    }
+
+    private async Task<string> _getCurrentUserNameAsync()
+    {
+        string user = "";
+        // Каждый раз определяем текущий логин пользователя заново
+        if (_getCurrentUserNameService != null)
+        {
+            user = await _getCurrentUserNameService.GetLoginAsync();
+        }
+        
+        if (user.IsNullOrEmpty()) user = "[not logged in]";
+        
+        return user;
+    }
+
+    private async Task _executeAsync()
+    {
+        string prefix = "DbConsole";
+        
+        if (_dbContext == null)
+        {
+            _error = "Отсутствует AppDbContext";
+            _logger?.LogError("{Prefix}: {msg}", prefix, _error);
+            return;
+        }
+        _error = null;
+        _infoMessage = null;
+        _columns.Clear();
+        _rows.Clear();
+        _wasExecuted = false;
+
+        var sql = _sql?.Trim();
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            _error = "SQL пуст";
+            return;
+        }
+
+        string user = await _getCurrentUserNameAsync();
+
+        // Определим SELECT по первому "ключевому слову" (учтём CTE 'WITH')
+        _isSelect = _isSelectLike(sql);
+
+        _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+
+        _isExecuting = true;
+        StateHasChanged();
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var openedHere = false;
+
+        try
+        {
+            if (conn.State != ConnectionState.Open)
+            {
+                await conn.OpenAsync(_cts.Token);
+                openedHere = true;
+            }
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.CommandTimeout = CommandTimeoutSeconds;
+
+            if (_isSelect)
+            {
+                // Выполняем и читаем первую результирующую выборку
+                await using var reader = await cmd.ExecuteReaderAsync(_cts.Token);
+
+                // Схема колонок
+                var fieldCount = reader.FieldCount;
+                for (int i = 0; i < fieldCount; i++)
+                    _columns.Add(reader.GetName(i));
+
+                // Строки
+                while (await reader.ReadAsync(_cts.Token))
+                {
+                    var row = new Dictionary<string, object?>(fieldCount, StringComparer.Ordinal);
+                    for (int i = 0; i < fieldCount; i++)
+                    {
+                        var val = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        row[_columns[i]] = val;
+                    }
+                    _rows.Add(row);
+                }
+
+                _infoMessage = $"Выполнено. Строк: {_rows.Count}. Колонок: {_columns.Count}.";
+            }
+            else
+            {
+                var affected = await cmd.ExecuteNonQueryAsync(_cts.Token);
+                _infoMessage = $"Выполнено. Затронуто строк: {affected}.";
+            }
+
+            _logger?.LogInformation("{Prefix}. User: {User}. Executed query: {Query}. Result: {Msg}.", 
+                prefix, user, sql, _infoMessage);
+
+            _wasExecuted = true;
+        }
+        catch (OperationCanceledException ex)
+        {
+            _error = "Выполнение отменено пользователем.";
+            _logger?.LogError(ex, "{Prefix}. User: {User}. Executed query {Query}. Result: {Err}", 
+                prefix, user, sql, _error);
+        }
+        catch (Exception ex)
+        {
+            _error = $"{ex.GetType().Name}: {ex.Message}";
+            _logger?.LogError(ex, "{Prefix}. User: {User}. Executed query {Query}. Result: {Err}", 
+                prefix, user, sql, _error);
+        }
+        finally
+        {
+            if (openedHere && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+
+            _isExecuting = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void _cancel()
+    {
+        _cts?.Cancel();
+    }
+
+    private static bool _isSelectLike(string sql)
+    {
+        // Убираем начальные комментарии/пустоты и смотрим первое слово
+        var firstToken = _firstToken(sql).ToUpperInvariant();
+        // SELECT, WITH (CTE), EXPLAIN (в ряде СУБД), PRAGMA (в SQLite может возвращать таблицу)
+        return firstToken is "SELECT" or "WITH" or "EXPLAIN" or "PRAGMA";
+    }
+
+    private static string _firstToken(string sql)
+    {
+        // Простейший лексер: скипаем комментарии -- и /* */ и пустоты
+        var s = sql.AsSpan();
+
+        while (true)
+        {
+            s = s.TrimStart();
+
+            if (s.StartsWith("--".AsSpan(), StringComparison.Ordinal))
+            {
+                var nl = s.IndexOfAny('\r', '\n');
+                s = nl >= 0 ? s[(nl+1)..] : ReadOnlySpan<char>.Empty;
+                continue;
+            }
+
+            if (s.StartsWith("/*".AsSpan(), StringComparison.Ordinal))
+            {
+                var end = s.IndexOf("*/".AsSpan(), StringComparison.Ordinal);
+                s = end >= 0 ? s[(end+2)..] : ReadOnlySpan<char>.Empty;
+                continue;
+            }
+
+            break;
+        }
+
+        var i = 0;
+        while (i < s.Length && !char.IsWhiteSpace(s[i]))
+            i++;
+
+        return s[..Math.Min(i, s.Length)].ToString();
+    }
+
+    private object? _getCellValue(Dictionary<string, object?> row, string column)
+    {
+        var value = row.GetValueOrDefault(column);
+        return value;
+    }    
+
+    private void _checkAdminCode()
+    {
+        string msg = "";
+        Severity severity = Severity.Success;
+        if (_adminCode == _defaultAdminCode)
+        {
+            _adminCodeAccepted = true;
+            msg = "Код администратора принят.";
+        }
+        else
+        {
+            _adminCodeAccepted = false;
+            msg = "Код администратора не принят.";
+            severity = Severity.Warning;
+        }
+        _snackBar?.Add(msg, severity);
+        _logger?.LogInformation("DbConsole: {Msg}", msg);
+        _logger?.LogSecurity($"DbConsole: {msg}");
+    }
+    
+}
+
+<style>
+    .sql-input textarea {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    .sql-result-table table {
+        white-space: nowrap;
+    }
+</style>

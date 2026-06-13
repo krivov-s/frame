@@ -1,0 +1,372 @@
+﻿@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Components.Params
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using SmartFormat
+
+@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+@typeparam TParentComponent where TParentComponent : class
+
+@*
+    Здесь не должно быть никаких провайдеров от MudBlazor, иначе начинаются непонятные конфликты.
+    Все провайдеры - в формах, которые подключают этот компонент.
+*@
+
+
+<style>
+    .selected {
+        background-color: #1E88E5 !important;
+    }
+
+    .selected > td {
+        color: white !important;
+    }
+
+    .selected > td .mud-input {
+        color: white !important;
+    }
+
+    .center-content {
+        display: flex;
+        align-items: center;
+        height: 100%; /* Убедитесь, что данный элемент занимает всю высоту */
+    }
+
+    .content_to_bottom {
+        display: flex;
+        align-items: flex-end;
+        height: 100%; /* Убедитесь, что данный элемент занимает всю высоту */
+    }
+
+    .align-bottom {
+        display: flex;
+        align-items: flex-end;
+        height: 100%;
+        background-color: rgba(255, 0, 0, 0.1); /* Добавляем фон для проверки */
+    }
+</style>
+
+<ErrorBoundary>
+    <ChildContent>
+        @if(_loading)
+        {
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            <MudText>Идет загрузка...</MudText>
+        }
+        else
+        {
+            if(_isAuthorized)
+            {
+                @if (!_canViewTEntity)
+                {
+                    <MudAlert Severity="Severity.Warning">Отсутствуют права доступа на чтение объектов данного типа</MudAlert>
+                }
+                else
+                {
+                    @if (_isEditing == false)
+                    {  
+                        // =======================================================================
+                        // ============================== SHOW GRID ==============================
+                        // =======================================================================
+                        <MudGrid Style="align-items: center;">
+                            @if (EditMode != EntitiesListEditMode.ReadOnly)
+                            {
+                                MarkupString strTitle = BuildTitle();
+                                <MudItem xs="12" sm="9" >
+                                    @if (strTitle.Value.Length > 0 && ShowTitle)
+                                    {
+                                        <MudText Typo="@TitleTypo">@strTitle</MudText>
+                                    }
+                                </MudItem>
+                                <MudItem xs="12" sm="3" style="display: flex; justify-content: flex-end">
+                                    @if (_savedFilters.Any() && _operateInMemory == false)
+                                    {
+                                        <ListSelect TEntity="SavedFilter"
+                                                    Items="_savedFilters"
+                                                    Label="@_savedFilterLabel"
+                                                    AdornmentIcon="@Icons.Material.Filled.SavedSearch"
+                                                    Variant="Variant.Text"
+                                                    Class="mr-2"
+                                                    Value="_savedFilter"
+                                                    ValueChanged="OnSavedFilterChangedAsync"/>
+                                    }
+                                    @if (_operations.Any())
+                                    {
+                                        <MudTooltip Text="Операции с элементами списка" Arrow="true" Color="Color.Default">
+                                            <MudMenu class="object-right" Icon="@Icons.Material.Filled.MoreVert" Color="Color.Primary">
+                                                @foreach (var menu in _operations)
+                                                {
+                                                    if (menu.Value.Divider)
+                                                    {
+                                                        <MudDivider/>
+                                                        continue;
+                                                    }
+
+                                                    bool isActive = (menu.Value.ActiveAlways)
+                                                                    || (menu.Value.ActiveOnSelected && _selectedEntities.Count > 0)
+                                                                    || (menu.Value.ActiveOnCurrent && CurrentEntity != null)
+                                                                    || (menu.Value.ActiveOnNoCurrentAndSelected && CurrentEntity == null && _selectedEntities.Count == 0);
+                                                    if (menu.Value.Href != "")
+                                                    {
+                                                        // Формируем ссылку с использованием Smart.Format
+                                                        string strHref = menu.Value.Href;
+                                                        try
+                                                        {
+                                                            strHref = Smart.Format(menu.Value.Href, BuildArgsForSmartFormat(CurrentEntity));
+                                                        }
+                                                        catch (Exception ex)
+                                                        {
+                                                            string strError = $"Ошибка формирования HRef для операции {menu.Key}";
+                                                            _snackBar?.Add(strError, Severity.Error);
+                                                            _logger?.LogError(ex, strError);
+                                                        }
+
+                                                        if (menu.Value.NewWindow)
+                                                        {
+                                                            <MudMenuItem Disabled="@(!isActive)" OnClick="_ => NavigateToNewTab(strHref)"> @menu.Key </MudMenuItem>
+                                                        }
+                                                        else
+                                                        {
+                                                            <MudMenuItem Disabled="@(!isActive)" Href="@menu.Value.Href"> @menu.Key </MudMenuItem>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <MudMenuItem Disabled="@(!isActive)" OnClick="_ => ProcessMenuOperationAsync(menu.Key, menu.Value)">@menu.Key</MudMenuItem>
+                                                    }
+                                                }
+                                            </MudMenu>
+                                        </MudTooltip>
+                                    }
+                                    @if (ShowReportsButton && _reports.Count > 0)
+                                    {
+                                        <MudTooltip Text="@TooltipReportsButton" Arrow="true" Color="Color.Default">
+                                            <MudIconButton class="object-right" 
+                                                           Icon="@Icons.Material.Outlined.ManageSearch" 
+                                                           Color="Color.Primary"
+                                                           Disabled="@(_reports.Count == 0)"
+                                                           OnClick="PrepareReportAsync"/>
+                                        </MudTooltip>
+                                    }
+                                    @if (ShowParamListButton && _userParamList.CountVisible > 0)
+                                    {
+                                        <MudTooltip Text="@TooltipParamListButton" Arrow="true" Color="Color.Default">
+                                            @if (_sharedObjectStorage == null)
+                                            {
+                                                // В дереве компонентов отсутствует общее объектное хранилище - устанавливаем своё
+                                                <CascadingValue Value="ActiveObjectStorage">
+                                                    <UserParamListEditorButton OnParamListChanged="ParamListChangedAsync"></UserParamListEditorButton>
+                                                </CascadingValue>
+                                            }
+                                            else
+                                            {
+                                                <UserParamListEditorButton OnParamListChanged="ParamListChangedAsync"></UserParamListEditorButton>
+                                            }
+                                        </MudTooltip>
+                                    }
+                                    @if (ShowAddButton)
+                                    {
+                                        <MudTooltip Text="@TooltipAddButton" Arrow="true" Color="Color.Default">
+                                            <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.Add" Color="Color.Primary" OnClick="AddNewAsync"/>
+                                        </MudTooltip>
+                                    }
+                                    @if (ShowAddFromTemplateButton)
+                                    {
+                                        <MudTooltip Text="@TooltipAddFromTemplateButton" Arrow="true" Color="Color.Default">
+                                            <MudIconButton class="object-right" Icon="@Icons.Material.Filled.AddCircleOutline" Color="Color.Primary" OnClick="AddFromTemplateAsync"/>
+                                        </MudTooltip>
+                                    }
+                                    @if (ShowDeleteSelectedButton && _selectedEntities.Count > 0)
+                                    {
+                                        <MudTooltip Text="@TooltipDeleteSelectedButton" Arrow="true" Color="Color.Default">
+                                            <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.DeleteOutline" Color="Color.Primary" OnClick="DeleteAllAsync"/>
+                                        </MudTooltip>
+                                    }
+                                    <MudTooltip Text="@TooltipRefreshListButton" Arrow="true" Color="Color.Default">
+                                        <MudIconButton class="object-right" Icon="@Icons.Material.Outlined.Refresh" Color="Color.Primary" OnClick="RefreshAsync"/>
+                                    </MudTooltip>
+                                </MudItem>
+                            }
+                            <MudDivider />
+                            <MudItem xs="12" sm="12">
+                                @* SelectedItems="_selectedEntities" *@
+                                <div tabindex="0" @onkeydown="@HandleKeyDown" @ondblclick="@OnDblClick">
+                                    @if (_firstInitCompleted)
+                                    {
+                                    <MudDataGrid @ref="_dataGrid"
+                                                 T="TEntity"
+                                                 Items="@_entitiesList"
+                                                 Groupable="true"
+                                                 MultiSelection="true"
+                                                 SelectOnRowClick="false"
+                                                 SelectedItemChanged="SelectedItemChangedAsync"
+                                                 SelectedItemsChanged="SelectedItemsChangedAsync"
+                                                 ReadOnly="_dataGridReadOnly"
+                                                 EditMode="DataGridEditMode.Form"
+                                                 EditTrigger="DataGridEditTrigger.Manual"
+                                                 CommittedItemChanges="@ItemChangedAfterInternalEditing"
+                                                 Filterable="@Filterable"
+                                                 FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                                                 RowClick="@OnRowClick"
+                                                 RowClass="cursor-pointer"
+                                                 RowClassFunc="@SelectedRowClassFunc"
+                                                 FilterMode="DataGridFilterMode.ColumnFilterRow"
+                                                 RowsPerPage="@_rowsPerPage"
+                                                 RowsPerPageChanged="_onRowsPerPageChangedAsync"
+                                                 Hover="true"
+                                                 Bordered="true"
+                                                 Dense="true">
+                                        <Columns>
+                                            <HierarchyColumn T="TEntity"
+                                                             InitiallyExpandedFunc="@(x => false)"
+                                                             Hidden="@(!ShowHierarchyColumn)"/>
+                                            @if (EditMode != EntitiesListEditMode.ReadOnly)
+                                            {
+                                                <SelectColumn T="TEntity"/>
+                                            }
+
+                                            @GridContent
+
+                                            @if (EditMode != EntitiesListEditMode.ReadOnly)
+                                            {
+                                                <TemplateColumn Filterable="false" Sortable="false">
+                                                    <CellTemplate Context="ctx">
+                                                        <MudStack Row="true">
+                                                            @if (ShowEditButton)
+                                                            {
+                                                                if (EditMode == EntitiesListEditMode.InternalDialog)
+                                                                {
+                                                                    <MudTooltip Text="@TooltipEditButton" Arrow="true" Color="Color.Default">
+                                                                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Edit" OnClick="@ctx.Actions.StartEditingItemAsync"/>
+                                                                    </MudTooltip>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <MudTooltip Text="@TooltipEditButton" Arrow="true" Color="Color.Default">
+                                                                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Edit" OnClick="(_) => EditAsync(ctx.Item)"/>
+                                                                    </MudTooltip>
+                                                                }
+                                                            }
+                                                            @if (ShowDeleteButton)
+                                                            {
+                                                                <MudTooltip Text="@TooltipDeleteButton" Arrow="true" Color="Color.Default">
+                                                                    <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" OnClick="(_) => DeleteAsync(ctx.Item)"/>
+                                                                </MudTooltip>
+                                                            }
+                                                            @if (ShowSaveAsTemplateButton)
+                                                            {
+                                                                <MudTooltip Text="@TooltipSaveAsTemplateButton" Arrow="true" Color="Color.Default">
+                                                                    <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.SaveAs" OnClick="(_) => SaveAsTemplateAsync(ctx.Item)"/>
+                                                                </MudTooltip>
+                                                            }
+                                                            @if (ShowAuditButton)
+                                                            {
+                                                                <MudTooltip Text="@TooltipAuditButton" Arrow="true" Color="Color.Default">
+                                                                    <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Filled.History" OnClick="(_) => AuditAsync(ctx.Item)"/>
+                                                                </MudTooltip>
+                                                            }
+                                                        </MudStack>
+                                                    </CellTemplate>
+                                                </TemplateColumn>
+                                            }
+                                        </Columns>
+                                        <ChildRowContent>
+                                            @ChildRowContent(context.Item)
+                                        </ChildRowContent>
+                                        <PagerContent>
+                                            <MudDataGridPager T="TEntity"/>
+                                            @* DisableRowsPerPage="true" *@
+                                        </PagerContent>
+                                    </MudDataGrid>
+                                    }
+                                    else
+                                    {
+                                        <MudProgressCircular Color="Color.Secondary"/>
+                                    }
+                                </div>
+                            </MudItem>
+                            @* 
+                            Кнопку сохранения здесь показываем только если это не часть композитной формы (в этом случае
+                            запись выполняется именно из нее), если есть хранилище и в нем зафиксированы изменения,
+                            и если это не операция в памяти, поскольку если это операция в памяти - то изменение 
+                            в хранилище это уже сохранение в память.
+                             *@
+                            @if (_compositeFormState == null && ActiveObjectStorage is { IsDirty: true } && !_operateInMemory)
+                            {
+                                const string savedOk = "Изменения сохранены успешно";
+                                const string savedErr = "Ошибка при сохранении изменений";
+                                <MudItem xs="12">
+                                    <MudButton Variant="Variant.Filled" 
+                                               Color="Color.Secondary" 
+                                               OnClick="(_) => 
+                                                    SaveChangesToStorageAsync(savedOk, savedErr)" 
+                                               class="ma-1">Сохранить сделанные изменения</MudButton>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    }
+                    else
+                    {
+                        // =======================================================================
+                        // ============================== SHOW FORM ==============================
+                        // =======================================================================
+                        @if(FormContent != null && CurrentEntity != null && ActiveRepository != null)
+                        {
+                            EntitiesListDetailFormState<TEntity> formState = new() //new(ActiveRepository)
+                            {
+                                OnNewEntityAdded = EventCallback.Factory.Create<TEntity>(this, OnNewEntityAdded)
+                            };
+
+                            if (_compositeFormState != null && _compositeFormState.IsDirty == false && CurrentEntity.Id == 0)
+                            {
+                                // Если основная форма сохранена - делаем стандартный заголовок
+                                _returnToListButtonText = "Вернуться в список и не сохранять новую строку";
+                            }
+                            else
+                            {
+                                _returnToListButtonText = "Вернуться в список";
+                            }
+
+                            @* formState  передается для оповещения об изменениях (добавление объектов). *@
+                            <CascadingValue Value="formState">
+                                @* ActiveRepository передается для фактических изменений (добавление/удаление объектов). *@
+                                <CascadingValue Value="ActiveRepository">
+
+                                    @if(_sharedObjectStorage == null)
+                                    {
+                                        // В дереве компонентов отсутствует общее объектное хранилище - устанавливаем своё
+                                        <CascadingValue Value="ActiveObjectStorage">
+                                            @FormContent(CurrentEntity)
+                                        </CascadingValue>
+                                    }
+                                    else
+                                    {
+                                        // В дереве уже присутствует общее объектное хранилище. Новое вниз не передаем.
+                                        @FormContent(CurrentEntity)
+                                    }
+
+                                    <MudButton  Variant="Variant.Outlined" Color="Color.Success" OnClick="@(() => OnFormContentClose())" class="ma-1 mt-4">
+                                        @_returnToListButtonText
+                                    </MudButton>
+                                </CascadingValue>
+                            </CascadingValue>
+                        }
+                    } 
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+            }
+        }
+        @* <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" @onclick="(e => SaveAsync())" /> *@
+    </ChildContent>
+    <ErrorContent Context="ctx">
+        <p class="errorUI">😈 Какая-то хрень </p>
+    </ErrorContent>
+</ErrorBoundary>
+
+
+
+

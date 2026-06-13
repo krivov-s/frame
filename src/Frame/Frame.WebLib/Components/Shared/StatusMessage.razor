@@ -1,0 +1,54 @@
+﻿@* @using Microsoft.AspNetCore.Http
+@using MudBlazor
+@using Frame.WebLib.Security
+
+<MudSnackbarProvider />
+
+@inject MudBlazor.ISnackbar snackBar
+
+@if (!string.IsNullOrEmpty(DisplayMessage))
+{
+    string statusClass = "success";
+    if (MessageSeverity == Severity.Error || MessageSeverity == Severity.Warning)
+    {
+        statusClass = "danger";
+    }
+    <div class="alert alert-@statusClass" role="alert">
+        <h2>@DisplayMessage</h2>
+    </div>
+}
+ *@
+
+@code {
+    // private string? messageFromCookie;
+
+    // [Parameter] public string StaticMessage { get; set; } = "";
+    // [Parameter] public string SnackBarMessage { get; set; } = "";
+    // [Parameter] public MudBlazor.Severity MessageSeverity { get; set; } = Severity.Success; //danger or success
+
+    // [CascadingParameter]
+    // private HttpContext HttpContext { get; set; } = default!;
+
+    // private string? DisplayMessage => StaticMessage ?? messageFromCookie;
+
+    // protected override void OnInitialized()
+    // {
+    //     if (HttpContext != null)
+    //     {
+    //         messageFromCookie = HttpContext.Request.Cookies[IdentityRedirectManager.StatusCookieName];
+
+    //         if (messageFromCookie is not null)
+    //         {
+    //             HttpContext.Response.Cookies.Delete(IdentityRedirectManager.StatusCookieName);
+    //         }
+    //     }
+    // }
+
+    // protected override void OnParametersSet()
+    // {
+    //     if (SnackBarMessage != "" && snackBar != null)
+    //     {
+    //         snackBar.Add(SnackBarMessage, MessageSeverity);
+    //     }
+    // }
+}

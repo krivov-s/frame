@@ -1,0 +1,19 @@
+﻿@page "/saved_filter_group/{id:int}"
+@using Microsoft.AspNetCore.Components.Web
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+<PageTitle>Группа сохранённых фильтров</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<CompositeForm TParentComponent="PF_SavedFilterGroup">
+    <CF_SavedFilterGroup Id="Id"></CF_SavedFilterGroup>
+</CompositeForm>
+
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+}

@@ -1,0 +1,35 @@
+﻿@page "/scriptcommand_group_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Scripting
+
+<PageTitle>Список групп отчётов</PageTitle>
+
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="ScriptCommandGroup"
+                    TParentComponent="PL_ScriptCommandGroup"
+                    Title="Список групп скрипт-команд"
+                    ConfigureQuerySpecification="spec => spec
+                        .Include(x => x.ScriptCommands)
+                            .ThenInclude(x => x.ScriptCommand)
+                        .OrderByAsc(u => u.Id)"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@ScriptCommandGroup" TProperty="@string" Property="x => x.Name" Title="@ScriptCommandGroup.Meta.Name.HumanName" Editable="true" Required="ScriptCommandGroup.Meta.Name.Required" />
+        <PropertyColumn T="@ScriptCommandGroup" TProperty="@string" Property="x => x.Description" Title="@ScriptCommandGroup.Meta.Descr.HumanName" Editable="true" Required="ScriptCommandGroup.Meta.Descr.Required" />
+        <PropertyColumn T="@ScriptCommandGroup" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <CF_ScriptCommandGroupCommands FormObject="context"></CF_ScriptCommandGroupCommands>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+
+}

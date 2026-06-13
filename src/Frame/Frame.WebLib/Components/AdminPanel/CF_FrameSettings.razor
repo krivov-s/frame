@@ -1,0 +1,159 @@
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityLoaders
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+@using Color = MudBlazor.Color
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+<CascadingValue Value="_objectStorage">
+    <SimpleEditForm @ref="_form"
+                    TEntity="FrameSettings"
+                    TParentComponent="CF_FrameSettings"
+                    Entity="_formObject"
+                    ShowSaveAndCreateButton="false"
+                    ShowSaveButton="true"
+                    ShowCloseButton="false"
+                    ShowTitle="false">
+        @if (_formObject != null && _form != null)
+        {
+            <MudGrid>
+                @if (_formObject.SystemUserProfile == null)
+                {
+                    <MudItem xs="12" sm="12">
+                        <MudAlert Severity="Severity.Warning">
+                            В объекте системных настроек не установлен профиль системного пользователя
+                        </MudAlert>
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem xs="12" sm="12">
+                        <MudStack Row="true">
+                            <CodeEditorButton Value="@_formObject.SystemUserProfile.ParamListJson"
+                                              ValueChanged="s => { 
+                                                  _formObject.SystemUserProfile.ParamListJson = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                              Title="Редактор json"
+                                              Language="AceLanguage.json"/>
+                            <ParamListDesignerButton Title="Дизайнер"
+                                                     Color="Color.Primary"
+                                                     Variant="Variant.Outlined"
+                                                     Value="@_formObject.SystemUserProfile.ParamListJson"
+                                                     ValueChanged="val => { _formObject.SystemUserProfile.ParamListJson = val; _form.SetDataChanged(); StateHasChanged(); }"/>
+                            <MudText>Редактор исходного кода и визуальный дизайнер для системного списка параметров</MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.ScriptCommandClassSyncCodeSample"
+                                          ValueChanged="s => { 
+                                                  _formObject.ScriptCommandClassSyncCodeSample = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Шаблон кода для ScriptCommand: реализация интерфейса IScriptCommandSync</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.ScriptCommandClassAsyncCodeSample"
+                                          ValueChanged="s => { 
+                                                  _formObject.ScriptCommandClassAsyncCodeSample = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Шаблон кода для ScriptCommand: реализация интерфейса IScriptCommandAsync</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.ScriptCommandMethodSyncCodeSample"
+                                          ValueChanged="s => { 
+                                                  _formObject.ScriptCommandMethodSyncCodeSample = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Шаблон кода для ScriptCommand: реализация простого синхронного метода</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.ScriptCommandMethodAsyncCodeSample"
+                                          ValueChanged="s => { 
+                                                  _formObject.ScriptCommandMethodAsyncCodeSample = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Шаблон кода для ScriptCommand: реализация простого асинхронного метода</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.ScriptCommandDataSourceCodeSample"
+                                          ValueChanged="s => { 
+                                                  _formObject.ScriptCommandDataSourceCodeSample = s;
+                                                  _form.SetDataChanged();
+                                              }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Шаблон кода для ScriptCommand: реализация интерфейса подготовки данных IScriptCommandDataSource</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="12">
+                    <MudStack Row="true">
+                        <CodeEditorButton Value="@_formObject.DefaultUsing"
+                                          ValueChanged="s => { 
+                                              _formObject.DefaultUsing = s;
+                                              _form.SetDataChanged();
+                                          }"
+                                          Title="Редактор c#"
+                                          Language="AceLanguage.csharp"/>
+                        <MudText>Блок using для использования в коде скрипт-функций по-умолчанию</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <RefEditFactory TEntity="FrameSettings" 
+                                    Entity="_formObject"
+                                    Field="FrameSettings.Meta.ReportFileDocumentType"
+                                    ValueChanged="_form.SetDataChanged"/>
+                </MudItem>
+            </MudGrid>
+        }
+    </SimpleEditForm>
+</CascadingValue>
+
+@code {
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_FrameSettings>? _logger { get; set; }
+    [Inject] private IObjectStorage? _objectStorage { get; set; }
+    [Inject] private IFrameSettingsLoader? _frameSettingsLoader { get; set; }
+
+    private SimpleEditForm<FrameSettings, CF_FrameSettings>? _form;
+    private FrameSettings? _formObject;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_frameSettingsLoader != null && _objectStorage != null)
+        {
+            Result<FrameSettings> resSettings = await _frameSettingsLoader.LoadFrameSettingsAsync(_objectStorage);
+            if (resSettings.IsError || resSettings.Value == null)
+            {
+                return;
+            }
+
+            _formObject = resSettings.Value;
+        }
+    }
+}

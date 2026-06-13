@@ -1,0 +1,43 @@
+﻿@page "/frame_notifications"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.App.Cores
+@using Frame.Domain.Entities.Core.FrameNotifications
+
+<PageTitle>Уведомления</PageTitle>
+
+<MudSnackbarProvider />
+
+@if(_userCore != null && _userCore.CurrentUser != null)
+{
+    <EntitiesListDetail TEntity="FrameNotification"
+                        TParentComponent="PL_FrameNotification"
+                        Title="Список уведомлений"
+                        ConfigureQuerySpecification="spec => spec
+                                                                    .Include(x => x.Sender)
+                                                                    .Include(x => x.Receiver)
+                                                                    .Where(x => x.ReceiverId == _userCore.CurrentUser.Id)
+                                                                    .OrderByDesc(x => x.DateCreate)"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@FrameNotification" TProperty="@DateTime" Property="x => x.DateCreate" Title="@FrameNotification.Meta.DateCreate.HumanName" Editable="false" />
+        <PropertyColumn T="@FrameNotification" TProperty="@string" Property="x => x.Theme" Title="@FrameNotification.Meta.Theme.HumanName" Editable="false" />
+        <PropertyColumn T="@FrameNotification" TProperty="@bool" Property="x => x.IsNew" Title="@FrameNotification.Meta.IsNew.HumanName" Editable=false />
+    </GridContent>
+
+        <FormContent>
+            <CF_FrameNotification FormObject="context"></CF_FrameNotification>
+        </FormContent>
+    </EntitiesListDetail>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">Ошибка инициализации</MudAlert>
+}
+@code {
+    [Inject] private IUserCore? _userCore { get; set; }
+}

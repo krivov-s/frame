@@ -1,0 +1,117 @@
+﻿@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+@using Frame.Shared
+
+@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+
+
+<style>
+    .selected {
+        background-color: #1E88E5 !important;
+    }
+
+    .selected > td {
+        color: white !important;
+    }
+
+    .selected > td .mud-input {
+        color: white !important;
+    }
+</style>
+
+<MudDialog>
+    <DialogContent>
+        <MudDivider />
+        <EntitiesListDetail @ref="@_dataGrid" 
+                            TEntity="TEntity"
+                            TParentComponent="SelectDialog<TEntity>"
+                            Entities="Items"
+                            Filterable="@Filterable"
+                            EditMode="EntitiesListEditMode.ReadOnly"
+                            CurrentEntity="SelectedObject"
+                            OnRowMouseDoubleClickAsync="RowDoubleClickAsync">
+        
+            <GridContent>
+                <PropertyColumn T="@TEntity" TProperty="@string" Property="x => x.Description" Title="@_colTitle"></PropertyColumn>
+            </GridContent>
+        </EntitiesListDetail>
+   </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Ok</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>
+    /// Наименование списка (название колонки в гриде)
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool Filterable { get; set; } = true;
+    
+    /// <summary>
+    /// Выбранный объект
+    /// </summary>
+    [Parameter] public TEntity? SelectedObject { get; set; }
+    
+    /// <summary>
+    /// Список значений, из которого нужно сделать выбор
+    /// </summary>
+    [Parameter] public List<TEntity>? Items { get; set; }
+
+    // private int _selectedRowNumber = -1;
+
+    private TEntity? _selectedItem => _dataGrid?.CurrentEntity;
+    private string _colTitle => (Title.Length > 0) ? Title : "Выберите значение";
+
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+
+    private EntitiesListDetail<TEntity, SelectDialog<TEntity>>? _dataGrid { get; set; }
+
+    private Task RowDoubleClickAsync(TEntity currentEntity)
+    {
+        if (_mudDialog != null)
+        {
+            _mudDialog.Close(DialogResult.Ok(currentEntity));
+        }
+
+        return Task.CompletedTask;
+    }
+    
+    private void Submit()
+    {
+        if(_mudDialog != null)
+        {
+            if (_selectedItem != null)
+            {
+                _mudDialog.Close(DialogResult.Ok(_selectedItem));
+            }
+            else
+            {
+                _mudDialog.Close(DialogResult.Cancel());
+            }
+        }
+    }
+
+    private void Cancel() => _mudDialog?.Cancel();
+
+    // private string SelectedRowClassFunc(TEntity element, int rowNumber)
+    // {
+    //     if (_selectedRowNumber == rowNumber)
+    //     {
+    //         _selectedRowNumber = -1;
+    //         return string.Empty;
+    //     }
+    //     else if (_selectedItem != null)
+    //     {
+    //         if (_selectedItem.Equals(element))
+    //         {
+    //             _selectedRowNumber = rowNumber;
+    //             return "selected";
+    //         }
+    //     }
+    //     return string.Empty;
+    // }
+
+}
+

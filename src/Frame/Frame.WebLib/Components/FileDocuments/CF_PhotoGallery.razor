@@ -1,0 +1,174 @@
+@using System.Collections.Concurrent
+@using Frame.App.FileRepositories
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Caching.Memory
+@using Microsoft.Extensions.Logging
+
+<MudGrid>
+    <MudItem xs="12" sm="4" md="3">
+        <MudPaper Class="pa-2" Style="height: 100%; overflow-y: auto;">
+            <MudList T="string" Dense="true">
+                @if (Items != null)
+                {
+                    int num = 1;
+                    foreach (var fileDocument in Items)
+                    {
+                        string name = $"{num}. {fileDocument.DocumentName}";
+                        <MudListItem
+                            Text="@name"
+                            OnClick="@(() => OnSelectFile(fileDocument))"
+                            Activated="@(fileDocument == _selectedFile)">
+                        </MudListItem>
+                        num++;
+                    }
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="8" md="9">
+        <MudStack Row="false">
+            <MudPaper Class="pa-2" Style="height: 100%; text-align:center;">
+                @if (_selectedFile is null)
+                {
+                    <MudText Color="Color.Secondary">Выберите файл слева для просмотра</MudText>
+                }
+                else if (_isLoading)
+                {
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary"/>
+                }
+                else if (_cache == null)
+                {
+                    <MudAlert>Отсутствует кэш файлов!</MudAlert>
+                }
+                else
+                {
+                    <ImageViewer ImageName="@_selectedFile.DocumentName" FileDocumentKeyInMemoryCache="@_selectedFile.Key"/>
+                }
+            </MudPaper>
+            @if (_selectedFile != null)
+            {
+                <MudTextField @bind-Value="_userTag" 
+                              Label="@FileDocument.Meta.UserTag.HumanName" 
+                              HelperText="Здесь можно изменить пользовательский тег, присвоенный картинке. При сохранении он также сохранится."
+                              ShrinkLabel="true" 
+                              Variant="Variant.Outlined" 
+                              class="ma-1"/>
+            }
+        </MudStack>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [CascadingParameter] CompositeFormState? _formState { get; set; }
+    
+    [Parameter] public List<FileDocument>? Items { get; set; }
+
+    [Inject] IFilesRepository? _filesRepository { get; set; }
+    [Inject] IMemoryCache? _cache { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] ILogger<CF_PhotoGallery>? _logger { get; set; }
+    [Inject] CoreWebSettings? _coreWebSettings { get; set; }
+
+    private FileDocument? _selectedFile;
+    private bool _isLoading;
+    
+    const int DEFAULT_EXP_TIME = 5;
+    private int _expirationTime = 0;
+
+    private string _userTag
+    {
+        get => _selectedFile?.UserTag ?? "";
+        set
+        {
+            if (_selectedFile != null)
+            {
+                if (_selectedFile.UserTag != value)
+                {
+                    _selectedFile.UserTag = value;
+                    if (_formState != null)
+                    {
+                        _formState.SetDirty();
+                    }
+                }
+            }
+        }
+    }
+    
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        if (_coreWebSettings != null)
+        {
+            _expirationTime = _coreWebSettings.ImagesInCacheLifetime;
+            if (_expirationTime == 0) _expirationTime = DEFAULT_EXP_TIME;
+        }
+    }
+
+    private void _setUserTag(MouseEventArgs args)
+    {
+        if(_selectedFile == null) return;
+        string currentTag = _selectedFile.UserTag;
+        
+    }
+    
+    private async Task OnSelectFile(FileDocument fileDocument)
+    {
+        if (_selectedFile == fileDocument)
+            return;
+        
+        if(!_isInitialized()) return;
+
+        if (string.IsNullOrEmpty(fileDocument.FileKey))
+        {
+            _snackBar?.Add("У выбранного файла отсутствует ключ для его получения из хранилища!", Severity.Warning);
+            return;
+        }
+        
+        _selectedFile = fileDocument;
+
+        if (!_cache!.TryGetValue(fileDocument.Key, out byte[]? selectedFileContent))
+        {
+            _isLoading = true;
+            try
+            {
+                selectedFileContent = await _filesRepository!.GetFileAsync(fileDocument.FileKey);
+                if (selectedFileContent != null)
+                {
+                    var cacheOptions = new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromMinutes(_expirationTime),
+                    };
+                    
+                    _cache!.Set(fileDocument.Key, selectedFileContent, cacheOptions);
+                }
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+    }
+
+    private bool _isInitialized()
+    {
+        if (_cache == null)
+        {
+            string err = "Ошибка инициализации: отсутствует кэш изображений";
+            _logger?.LogError("{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+            return false;
+        }
+        
+        if (_filesRepository == null)
+        {
+            string err = "Ошибка инициализации: отсутствует сервис чтения файлов";
+            _logger?.LogError("{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+            return false;
+        }
+
+        return true;
+    }
+}

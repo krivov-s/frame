@@ -1,0 +1,94 @@
+@using Frame.Domain.Entities.Core 
+
+@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+@typeparam TListItem
+
+<MudTextField
+    Label="@Label"
+    Value="@_formattedListString"
+    Disabled="Disabled"
+    Variant="Variant"
+    Adornment="Adornment.End" 
+    AdornmentIcon="@Icons.Material.Filled.Edit"
+    OnAdornmentClick="OpenListEditorAsync"
+    ReadOnly="true" />
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    /// <summary>
+    /// Основной объект, с которым происходит работа
+    /// </summary>
+    [Parameter] public TEntity? Entity { get; set; }
+    
+    /// <summary>
+    /// Func, который нужно вызывать для получения списка из объекта TEntity
+    /// </summary>
+    [Parameter] public Func<TEntity, List<TListItem?>?>? ValGetter { get; set; }
+        
+    /// <summary>
+    /// Action, которую нужно вызывать для записи списка в объект TEntity
+    /// </summary>
+    [Parameter] public Action<TEntity, List<TListItem>?>? ValSetter { get; set; }
+    
+    //[Parameter] public List<TListItem> Items { get; set; } = [];
+    [Parameter] public EventCallback ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+
+    private string _formattedListString
+    {
+        get
+        {
+            if (Entity != null && ValGetter != null)
+            {
+                List<TListItem?>? items = ValGetter.Invoke(Entity);
+                return (items != null) ? string.Join(", ", items) : "";
+            }
+
+            return "";
+        }
+    }
+
+    
+    private async Task OpenListEditorAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Не инициализирован IDialogService", Severity.Error);
+            return;
+        }
+
+        if (Entity == null)
+        {
+            _snackBar?.Add("Не передан редактируемый объект", Severity.Error);
+            return;
+        }
+
+        List<TListItem?>? items = ValGetter?.Invoke(Entity);
+
+        if (items == null)
+        {
+            _snackBar?.Add("Не удалось получить список из объекта", Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters 
+        { 
+            { "InitialList", items } 
+        };
+        
+        var dialog = await _dialogService.ShowAsync<GenericListEditor<TListItem>>("Редактор списка", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: List<TListItem> updatedList })
+        {
+            ValSetter?.Invoke(Entity, updatedList);
+            await ValueChanged.InvokeAsync();
+            StateHasChanged();
+        }
+    }
+    
+}

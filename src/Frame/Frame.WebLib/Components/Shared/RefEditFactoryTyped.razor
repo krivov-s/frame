@@ -1,0 +1,111 @@
+﻿@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+@typeparam TRefEntity where TRefEntity : BaseEntity, IBaseGenericEntity<TRefEntity>, new()
+@using Frame.Domain
+@using Microsoft.AspNetCore.Components.Forms
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.QuerySpec
+
+@if (_refEditType != null)
+{
+    @_dynamicComponent
+}
+else
+{
+    <MudAlert Severity="Severity.Warning">@($"Не удалось сконструировать поле RefEdit")</MudAlert>
+}
+
+@code {
+    /// <summary>
+    /// Значение параметра определяет, доступно ли поле для редактирования.
+    /// Должно быть установлено формой, в которую входит поле.
+    /// Обычно это делается в <see cref="SimpleEditForm{TEntity,TParentComponent}"/>
+    /// </summary>
+    [CascadingParameter(Name="CanModify")] bool _canModify { get; set; }
+    
+    // Исхожу из того, что у RefEdit есть возможность самостоятельно получить CascadingParameter.
+    // Поэтому здесь мы пропихиваем ObjectStorage только если он явно задан.
+
+    [CascadingParameter] private EditContext? _editContext { get; set; }
+    /// <summary>
+    /// Метаданные по изменяемому атрибуту
+    /// </summary>
+    [Parameter] public Field<TEntity>? Field { get; set; }
+    /// <summary>
+    /// Основной объект, в котором изменяется атрибут
+    /// </summary>
+    [Parameter] public TEntity? Entity { get; set; }
+    //[Parameter] public Action? ValueChanged { get; set; }
+    [Parameter] public EventCallback ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Func<IQuerySpecification<TRefEntity>, IQuerySpecification<TRefEntity>>? ConfigureQuerySpecification { get; set; }
+    
+    /// <summary>
+    /// <inheritdoc cref="RefEdit{TEntity,TRefEntity}.RefEntities"/>
+    /// </summary>
+    [Parameter] public List<TRefEntity>? RefEntities { get; set; }
+    
+    [Parameter] public Func<string>? HrefToFormUrl { get; set; }
+    [Parameter] public Func<string>? HrefToFormText { get; set; }
+    [Parameter] public Func<TEntity?, TRefEntity?, string>? GetTooltipFunc { get; set; }
+
+
+    // [Parameter] public Func<IQueryable<TRefEntity>, IQueryable<TRefEntity>>? ConfigureSelect { get; set; }
+    // [Parameter] public Func<IQueryable<TRefEntity>, IQueryable<TRefEntity>>? ConfigureWhere { get; set; }
+    // [Parameter] public Func<IQueryable<TRefEntity>, IQueryable<TRefEntity>>? ConfigureOrderBy { get; set; }
+    
+    /// <summary>
+    /// Хранилище, откуда будут считываться данные для списка. Если не задано - из FormState или из DI будет получено собственное отдельное хранилище.
+    /// </summary>
+    // [Parameter] public IObjectStorage? ObjectStorage { get; set; }
+
+    private RenderFragment _dynamicComponent => builder =>
+    {
+        if (_refEditType != null && Field != null)
+        {
+            builder.OpenComponent(0, typeof(RefEdit<TEntity,TRefEntity>));
+            // Здесь мы просто настраиваем параметры компонента RefEdit
+            builder.AddAttribute(1, "Entity", Entity);
+            // Обычному Delegate можно присваивать типизированный Func<>
+            // ВАЖНО!!! ValGetter (Func<TEntity, TRefEntity>) обязательно должен быть конечно-типизированный, не <TEntity, BaseEntity>. Иначе не срабатывает!
+            builder.AddAttribute(2, "ValGetter", Field.RefGet?.Compile());
+            builder.AddAttribute(3, "ValSetter", Field.RefSet);
+            if(ConfigureQuerySpecification != null)
+                builder.AddAttribute(4, "ConfigureQuerySpecification", ConfigureQuerySpecification);
+            else
+                builder.AddAttribute(4, "ConfigureQuerySpecification", Field.RefConfigureQuerySpecification);
+            builder.AddAttribute(5, "ValueChanged", ValueChanged);
+            builder.AddAttribute(6, "Label", Field.HumanName);
+            builder.AddAttribute(7, "Disabled", Disabled || !_canModify);
+            builder.AddAttribute(8, "Variant", Variant);
+            builder.AddAttribute(9, "ValIdSetter", Field.RefIdSet);
+            builder.AddAttribute(10, "HelperText", Field.HelperText);
+            builder.AddAttribute(11, "HrefToFormUrl", HrefToFormUrl);
+            builder.AddAttribute(12, "HrefToFormText", HrefToFormText);
+            builder.AddAttribute(13, "GetTooltipFunc", GetTooltipFunc);
+            builder.AddAttribute(14, "RefEntities", RefEntities);
+            
+            builder.CloseComponent();
+        }
+    };
+
+    // Динамически конструируем тип будущего RefEdit
+    private Type? _typeRef;
+    private Type? _refEditType
+    {
+        get
+        {
+            if(_typeRef != null)
+            {
+            }
+            else
+            {
+                _typeRef = (Field != null && Field.RefEntityType != null)
+                           ? typeof(RefEdit<,>).MakeGenericType(Field.EntityType, Field.RefEntityType)
+                           : null;
+            }
+
+            return _typeRef;
+        }
+    }
+}

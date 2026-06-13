@@ -1,0 +1,137 @@
+@page "/change_user_password"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.App.IEntityRepositories
+@using Frame.App.Security
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Logging
+
+<AuthorizeView>
+    <Authorized>
+        <MudForm @bind-IsValid="@_success">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Изменение пароля пользователя</MudText>
+                        <MudDivider />
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTextField T="string"
+                                  @bind-Value="@_currentPass"
+                                  Label="Текущий пароль"
+                                  HelperText="Введите свой текущий пароль"
+                                  InputType="InputType.Password"
+                                  Required="true"
+                                  RequiredError="Пароль не может быть пустым"/>
+                    <MudTextField T="string" Label="Пароль" HelperText="Введите свой новый пароль" @ref="_pwField1"
+                                  InputType="InputType.Password"
+                                  Required="true"
+                                  RequiredError="Пароль не может быть пустым"/>
+                    <MudTextField T="string"
+                                  Label="Пароль" HelperText="Повторите ваш новый пароль" InputType="InputType.Password"
+                                  Validation="@(new Func<string, string?>(PasswordMatch))"/>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(!_success)"
+                               Class="ml-auto"
+                               OnClick="SaveUserAsync">
+                        Сохранить новый пароль
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudForm>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert>Вы не авторизованы в системе!</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+    [Inject] ILogger<CF_ChangeUserPass>? _logger { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] IGetCurrentUserService? _getCurrentUserService { get; set; }
+    [Inject] IObjectStorage? _objectStorage { get; set; }
+    [Inject] NavigationManager? _navigationManager { get; set; }
+    private string _currentPass = "";
+    private string _newPass = "";
+    private MudTextField<string>? _pwField1;
+    private bool _success;
+    private User? _currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logger?.LogInformation("Замена пароля пользователя");
+        if (_getCurrentUserService != null)
+        {
+            Result<User> resUser = await _getCurrentUserService.GetCurrentUserAsync();
+            if (resUser.IsError || resUser.Value == null)
+            {
+                _snackBar?.Add("Не удалось получить текущего пользователя!", Severity.Error);
+                return;
+            }
+
+            _currentUser = resUser.Value;
+        }
+    }
+    
+    private string? PasswordMatch(string arg)
+    {
+        if (_pwField1?.Value != arg)
+            return "Пароли не совпадают";
+        
+        // Пароли совпали - сохраняем новый
+        _newPass = arg;
+        return null;
+    }
+
+    private async Task SaveUserAsync()
+    {
+        if (_currentUser == null || _objectStorage == null || _logger == null)
+        {
+            return;
+        }
+
+        try
+        {
+            Result<User> resUser = await _objectStorage.GetObjAsync<User>(
+                spec => spec.Where(u => u.Login == _currentUser.Login));
+            if (resUser.IsError || resUser.Value == null)
+            {
+                string err = $"Не найден пользователь с Login = {_currentUser.Login}. {resUser.ErrorResult}";
+                _logger.LogSecurity(err);
+                _snackBar?.Add(err, Severity.Error);
+                return;
+            }
+
+            User user = resUser.Value;
+            if (!user.VerifyPassword(_currentPass))
+            {
+                _snackBar?.Add("Текущий пароль некорректен!", Severity.Warning);
+                return;
+            }
+        
+            user.SetPassword(_newPass);
+            user.ChangePassOnNextLogin = false;
+            await _objectStorage.SaveChangesAsync();
+        
+            _snackBar?.Add("Пароль изменен!", Severity.Success);
+            
+            _navigationManager?.NavigateTo("/");
+        }
+        catch (Exception e)
+        {
+            string err = $"Ошибка при изменении пароля пользователя {_currentUser.Login}: {e.Message}";
+            _logger.LogSecurity(err);
+            _logger.LogError(e, "{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+        }
+    }
+}

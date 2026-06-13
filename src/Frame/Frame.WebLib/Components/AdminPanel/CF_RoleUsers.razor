@@ -1,0 +1,89 @@
+﻿@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+
+@if (CurrentRole != null)
+{
+    <EntitiesListDetail TEntity="UsersRoles"
+                        TParentComponent="CF_RoleUsers"
+                        Title="Список пользователей"
+                        EditMode="EntitiesListEditMode.InternalDialog"
+                        ShowEditButton="false"
+                        Entities="CurrentRole.UsersRoles"
+                        OnAddNewAsync="_addNewUserToRoleAsync">
+        <GridContent>
+            <PropertyColumn T="@UsersRoles" TProperty="@string" Property="x => x.User.Login" Title="@User.Meta.Login.HumanName"></PropertyColumn>
+            <PropertyColumn T="@UsersRoles" TProperty="@string" Property="x => x.User.FIO" Title="@User.Meta.FIO.HumanName"></PropertyColumn>
+            <PropertyColumn T="@UsersRoles" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+        </GridContent>
+    </EntitiesListDetail>
+}
+
+@code {
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    [Parameter] public Role? CurrentRole { get; set; }
+
+    private async Task<Result<UsersRoles>> _addNewUserToRoleAsync(IBaseRepository<UsersRoles>? repository)
+    {
+        Result<UsersRoles> res = Result<UsersRoles>.Success(null);
+        
+        if (_dialogService != null && repository != null && CurrentRole != null)
+        {
+            IObjectStorage objectStorage = repository.ObjectStorage;
+
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<User>> parameters = new DialogParameters<SelectDialog<User>>();
+
+            Result<List<User>> resUsers = await objectStorage.GetListAsync<User>("Чтение всех пользователей");
+            if (resUsers.IsErrorOrNull)
+            {
+                _snackBar?.Add(resUsers.ErrorResult, Severity.Error);
+                return res;
+            }
+            
+            List<User> users = resUsers.Value!;
+            if (users.Count == 0)
+            {
+                _snackBar?.Add("Не найдены пользователи для добавления", Severity.Info);
+                return res;
+            }
+
+            var excludedIDs = new HashSet<int>(CurrentRole.UsersRoles.Select(p => p.User.Id));
+            var usersClean = users.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+            if (usersClean.Count > 0)
+            {
+                parameters.Add(x => x.Items, usersClean);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<User>>("Выберите пользователя", parameters, options);
+                var result = await dialog.Result;
+                if (result is { Canceled: false })
+                {
+                    User? user = (User?)result.Data;
+                    if (user != null)
+                    {
+                        UsersRoles rel = new()
+                        {
+                            RoleId = CurrentRole.Id,
+                            Role = CurrentRole,
+                            UserId = user.Id,
+                            User = user
+                        };
+                        CurrentRole.UsersRoles.Add(rel);
+                        objectStorage.Add(rel);
+                        _compositeFormState?.SetDirty(true);
+                        return Result<UsersRoles>.Success(rel);
+                    }
+                }
+            }
+            else
+            {
+                _snackBar?.Add($"Отсутствуют пользователи для добавления", Severity.Info);
+            }
+        }
+
+        return res;
+    }
+}

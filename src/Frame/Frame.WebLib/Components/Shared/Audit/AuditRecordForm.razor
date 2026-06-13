@@ -1,0 +1,131 @@
+﻿@page "/auditrecord/{id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+
+<MudSnackbarProvider />
+
+<PageTitle>Аудит объекта</PageTitle>
+
+<ErrorBoundary>
+<ChildContent>
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h5">@_auditRecordTitle</MudText>
+            <MudDivider />
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (_auditRecord != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="2">
+                    <MudTextField @bind-Value="_auditRecord.EntityType" Label="@AuditRecord.Meta.EntityType.HumanName" ReadOnly="true" Variant="Variant.Text" />
+                    <MudTextField @bind-Value="_auditRecord.EntityId" Label="@AuditRecord.Meta.EntityId.HumanName" ReadOnly="true" Variant="Variant.Text" />
+                    <MudTextField @bind-Value="_auditRecord.RecordDateTime" Format="yyyy-MM-dd HH:mm:ss" Label="@AuditRecord.Meta.RecordDateTime.HumanName" ReadOnly="true" Variant="Variant.Text" />
+                    <MudTextField @bind-Value="_auditRecord.UserName" Label="@AuditRecord.Meta.UserName.HumanName" ReadOnly="true" Variant="Variant.Text" />
+                    <MudTextField @bind-Value="_auditRecord.Action" Label="@AuditRecord.Meta.Action.HumanName" ReadOnly="true" Variant="Variant.Text" />
+                    <MudTextField @bind-Value="_auditRecord.KeyValues" Label="@AuditRecord.Meta.KeyValues.HumanName" ReadOnly="true" Variant="Variant.Text" Lines="1" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_auditRecord.Changes" 
+                                  Label="@AuditRecord.Meta.Changes.HumanName" 
+                                  ReadOnly="true" 
+                                  Variant="Variant.Text"
+                                  AutoGrow="true"
+                                  MaxLines="40"/>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_auditRecord.OldValues" 
+                                  Label="@AuditRecord.Meta.OldValues.HumanName" 
+                                  ReadOnly="true" 
+                                  Variant="Variant.Text"
+                                  AutoGrow="true"
+                                  MaxLines="40"/>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_auditRecord.NewValues" 
+                                  Label="@AuditRecord.Meta.NewValues.HumanName" 
+                                  ReadOnly="true" 
+                                  Variant="Variant.Text"
+                                  AutoGrow="true"
+                                  MaxLines="40"/>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudCardContent>
+    <MudCardActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CancelAsync">Закрыть</MudButton>
+    </MudCardActions>
+</MudCard>
+</ChildContent>
+<ErrorContent Context="ctx">
+    <p class="errorUI">😈 Какая-то хрень </p>
+</ErrorContent>
+</ErrorBoundary>
+
+
+@code {
+    [Parameter] public int id { get; set; }
+
+    [Inject] protected IObjectStorage? _objectStorage { get; set; }
+    [Inject] protected ISnackbar? _snackBar { get; set; }
+    [Inject] protected IJSRuntime? JSRuntime { get; set; }
+
+    private AuditRecord? _auditRecord;
+    private  string _auditRecordTitle = "";
+    private  IBaseRepository<AuditRecord>? _repository { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if(_repository == null && _objectStorage != null)
+        {
+            Result<IBaseRepository<AuditRecord>> result = _objectStorage.GetBaseRepository<AuditRecord>();
+            if (result.IsError || result.Value == null)
+            {
+                throw new Exception("Не удалось получить репозиторий от IObjectStorage");
+            }
+            _repository = result.Value;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_repository != null)
+        {
+            if (id != 0)
+            {
+                Result<AuditRecord> res = await _repository.GetByIdAsync(id);
+                if (res.IsError || res.Value == null)
+                {
+                    _snackBar?.Add(res.ErrorResult, Severity.Error);
+                }
+                else
+                {
+                    _auditRecord = res.Value;
+                    _auditRecordTitle = $"Аудит объекта {_auditRecord.EntityType}, Id: {_auditRecord.Id}";
+                }
+            }
+            else
+            {
+                _auditRecord = new AuditRecord();
+            }
+        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    protected async Task CancelAsync()
+    {
+        if (JSRuntime != null)
+        {
+            await JSRuntime.InvokeVoidAsync("window.close");
+        }
+    }
+
+}

@@ -1,0 +1,105 @@
+﻿@page "/reports_list"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Reports
+@using Frame.Rep.Interfaces
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+
+<PageTitle>Отчеты</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="FrameReport"
+                    TParentComponent="PL_FrameReport"
+                    Title="Список отчётов"
+                    Operations="Commands"
+                    ConfigureQuerySpecification="x => x
+                        .Include(f => f.FrameReportType)
+                        .Include(f => f.SavedQuery)
+                        .Include(f => f.ScriptCommand)
+                        .Include(f => f.ReportTemplate)
+                        .Include(f => f.FrameReportGroups)
+                        .ThenInclude(f => f.FrameReportGroup)
+                        .Build()"
+                    EditMode="EntitiesListEditMode.FormContent">
+    @* OnBeforeEditFormContent="(report, _) => { *@
+    @* if (report.ReportTemplate == null && *@
+    @* (report.ReportTemplateId == null || report.ReportTemplateId == 0)) { *@
+    @* report.ReportTemplate = new(); *@
+    @* } *@
+    @* }" *@
+    <GridContent>
+        <PropertyColumn T="@FrameReport" TProperty="@string" Property="x => x.Name" Title="@FrameReport.Meta.Name.HumanName"/>
+        <PropertyColumn T="@FrameReport"
+                        TProperty="@string"
+                        Property="x => (x.FrameReportType != null) ? x.FrameReportType.Name : String.Empty"
+                        Title="@FrameReport.Meta.FrameReportType.HumanName"/>
+        <PropertyColumn T="@FrameReport" 
+                        TProperty="@string" 
+                        Property="x => (x.SavedQuery != null) ? x.SavedQuery.Name : String.Empty" 
+                        Title="@FrameReport.Meta.SavedQuery.HumanName"/>
+        <PropertyColumn T="@FrameReport" TProperty="@string" Property="x => x.SystemTag" Title="@FrameReport.Meta.SystemTag.HumanName"/>
+        <PropertyColumn T="@FrameReport" TProperty="@string" Property="x => x.UserTag" Title="@FrameReport.Meta.UserTag.HumanName"/>
+        <PropertyColumn T="@FrameReport" TProperty="@string" Property="x => x.FrameReportGroupNames" Title="@FrameReport.Meta.FrameReportGroupNames.HumanName" />
+
+        @* Дописать колонки *@
+    </GridContent>
+
+    <FormContent>
+        <CF_FrameReport FormObject="context"/>
+    </FormContent>
+</EntitiesListDetail>
+
+@code {
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private IJSRuntime? _jsRuntime { get; set; }
+    [Inject] private ILogger<PL_FrameReport>? _logger { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] private IFrameReporting? _frameReporting { get; set; }
+
+    protected readonly Dictionary<string, EntitiesListOperation<FrameReport>> Commands = [];
+
+    protected override void OnInitialized()
+    {
+        Commands.Add("Подготовить отчет", new EntitiesListOperation<FrameReport>()
+            {
+                ActiveOnCurrent = true,
+                ActionAsync = ExecuteReportAsync
+            });
+    }
+
+    private async Task ExecuteReportAsync(string strCommand, HashSet<FrameReport> reports, IBaseRepository<FrameReport> repository)
+    {
+        if (reports.Count == 0)
+        {
+            _snackBar?.Add("Отчет не выбран", Severity.Info);
+            return;
+        }
+
+        if (reports.Count > 1)
+        {
+            _snackBar?.Add("Для подготовки должен быть выбран только один отчет", Severity.Info);
+            return;
+        }
+
+        if (_frameReporting == null)
+        {
+            _snackBar?.Add("Отсутствует сервис FrameReporting", Severity.Error);
+            return;
+        }
+
+        if (_jsRuntime == null)
+        {
+            _snackBar?.Add("Отсутствует сервис JsRuntime", Severity.Error);
+            return;
+        }
+
+        FrameReport report = reports.First();
+        await Helpers.ExecuteReportAsync<object>(report, null, _frameReporting, _snackBar, _jsRuntime, _logger, _dialogService);
+    }
+}

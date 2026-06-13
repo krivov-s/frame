@@ -1,0 +1,32 @@
+﻿@page "/frame_report_type_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.Reports
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>Типы отчетов</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="FrameReportType"
+              TParentComponent="PL_FrameReportType"
+              Title="Список типов отчётов"
+              EditMode="EntitiesListEditMode.FormContent">
+
+    <GridContent>
+        <PropertyColumn T="@FrameReportType" TProperty="@string" Property="x => x.Name" Title="@FrameReportType.Meta.Name.HumanName"></PropertyColumn>
+        <PropertyColumn T="@FrameReportType" TProperty="@string" Property="x => x.Descr" Title="@FrameReportType.Meta.Descr.HumanName"></PropertyColumn>
+    </GridContent>
+
+    <FormContent>
+        <SimpleEditForm TEntity="FrameReportType"
+                        TParentComponent="PL_FrameReportType"
+                        Entity="context">
+        </SimpleEditForm>
+    </FormContent>
+</EntitiesListDetail>
+
+@code {
+
+}

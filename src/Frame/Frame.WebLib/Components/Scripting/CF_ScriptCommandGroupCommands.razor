@@ -1,0 +1,162 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Scripting
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCard>
+            <MudCardHeader>
+                <MudText Typo="Typo.h5">Группа скриптов @_formObject?.Name</MudText>
+            </MudCardHeader>
+            <MudDivider />
+            <MudCardContent>
+                @if (_formObject != null)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                        <MudTabPanel Text="Параметры">
+                            <SimpleEditForm @ref="_formScriptCommandGroup"
+                                            TEntity="ScriptCommandGroup"
+                                            TParentComponent="CF_ScriptCommandGroupCommands"
+                                            Entity="_formObject"
+                                            ShowTitle="false">
+                                <MudGrid>
+                                    <MudItem xs="12" sm="12">
+                                        <MudStack Row="false">
+                                            <FieldEditFactory TEntity="ScriptCommandGroup" Entity="_formObject" Field="ScriptCommandGroup.Meta.Name" />
+                                            <FieldEditFactory TEntity="ScriptCommandGroup" Entity="_formObject" Field="ScriptCommandGroup.Meta.Descr" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </SimpleEditForm>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Отчёты">
+                            <EntitiesListDetail TEntity="ScriptCommandGroupLink"
+                                                TParentComponent="CF_ScriptCommandGroupCommands"
+                                                Title="Список скриптов"
+                                                Entities="_formObject.ScriptCommands"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnAddNewAsync="_addNewScriptCommandGroupLink">
+                                <GridContent>
+                                    <PropertyColumn T="@ScriptCommandGroupLink" TProperty="@string" Property="x => x.ScriptCommand != null ? x.ScriptCommand.ScriptName : string.Empty" Title="@ScriptCommand.Meta.ScriptName.HumanName" />
+                                    <PropertyColumn T="@ScriptCommandGroupLink" TProperty="@string" Property="x => x.ScriptCommand != null ? x.ScriptCommand.Comment : string.Empty" Title="@ScriptCommand.Meta.Comment.HumanName" />
+                                </GridContent>
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                    </MudTabs>
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudCardContent>
+
+        </MudCard>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public int id { get; set; }
+    [Parameter] public ScriptCommandGroup? FormObject { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_ScriptCommandGroupCommands>? _logger { get; set; }
+
+    private ScriptCommandGroup? _formObject = null;
+    private ScriptCommand? _ScriptCommand = null;
+
+    private bool _isAuthorized;
+
+    private SimpleEditForm<ScriptCommandGroup, CF_ScriptCommandGroupCommands>? _formScriptCommandGroup { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    protected readonly Dictionary<string, EntitiesListOperation<ScriptCommandGroupLink>> Commands = [];
+
+    private async Task<Result<ScriptCommandGroupLink>> _addNewScriptCommandGroupLink(IBaseRepository<ScriptCommandGroupLink>? repository)
+    {
+        Result<ScriptCommandGroupLink> res = Result<ScriptCommandGroupLink>.Success(null);
+
+        if (_dialogService != null && repository != null && FormObject != null)
+        {
+            IObjectStorage objectStorage = repository.ObjectStorage;
+
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<ScriptCommand>> parameters = new DialogParameters<SelectDialog<ScriptCommand>>();
+
+            Result<List<ScriptCommand>> resCommands = await objectStorage.GetListAsync<ScriptCommand>("Чтение всех отчётов");
+            if (resCommands.IsErrorOrNull)
+            {
+                _snackBar?.Add(resCommands.ErrorResult, Severity.Error);
+                return res;
+            }
+
+            List<ScriptCommand> users = resCommands.Value!;
+            if (users.Count == 0)
+            {
+                _snackBar?.Add("Не найдены отчёты для добавления", Severity.Info);
+                return res;
+            }
+
+            var excludedIDs = new HashSet<int>(FormObject.ScriptCommands.Select(p => p.ScriptCommand.Id));
+            var commandsClean = users.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+            if (commandsClean.Count > 0)
+            {
+                parameters.Add(x => x.Items, commandsClean);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<ScriptCommand>>("Выберите пользователя", parameters, options);
+                var result = await dialog.Result;
+                if (result is { Canceled: false })
+                {
+                    ScriptCommand? command = (ScriptCommand?)result.Data;
+                    if (command != null)
+                    {
+                        ScriptCommandGroupLink rel = new()
+                        {
+                            ScriptCommandGroupId = FormObject.Id,
+                            ScriptCommandGroup = FormObject,
+                            ScriptCommandId = command.Id,
+                            ScriptCommand = command
+                        };
+                        FormObject.ScriptCommands.Add(rel);
+                        objectStorage.Add(rel);
+                        _compositeFormState?.SetDirty(true);
+                        return Result<ScriptCommandGroupLink>.Success(rel);
+                    }
+                }
+            }
+            else
+            {
+                _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+            }
+        }
+
+        return res;
+    }
+}

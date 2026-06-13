@@ -1,0 +1,274 @@
+@page "/log_viewer"
+
+@using System.IO
+@using Microsoft.AspNetCore.Components.Web
+@using System.Text
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudStack Spacing="2">
+        @if (AdminCodeAccepted)
+        {
+            <MudText Typo="Typo.h6">Log Viewer</MudText>
+
+            @if (LogFiles.Count > 0)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Start">
+                    <MudSelect T="string" Label="Файл" Value="_selectedFile" ValueChanged="_onFileChanged">
+                        @foreach (var f in LogFiles)
+                        {
+                            <MudSelectItem T="string" Value="@f">@Path.GetFileName(f)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField @bind-Value="_linesPerPage" Label="Строк на страницу" Variant="Variant.Outlined" Style="width: 180px"/> 
+                    <MudButton Variant="Variant.Outlined" OnClick="Reload">Обновить</MudButton>
+                </MudStack>
+
+                <MudPaper Class="pa-2" Elevation="1" Style="max-height: 60vh; overflow:auto; white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
+                    @if (_currentLines.Count == 0)
+                    {
+                        <MudText Color="Color.Secondary">Нет данных для отображения.</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var line in _currentLines)
+                        {
+                            @line
+                        }
+                    }
+                </MudPaper>
+
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudButton Variant="Variant.Outlined" Disabled="@(_pageIndex == 0)" OnClick="PrevPage">Назад</MudButton>
+                    <MudText>Страница @(_pageIndex + 1) / @_totalPages</MudText>
+                    <MudButton Variant="Variant.Outlined" Disabled="@(_pageIndex >= _totalPages - 1)" OnClick="NextPage">Вперёд</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudText Color="Color.Error">Нет доступных лог-файлов</MudText>
+            }
+        }
+        else
+        {
+            <MudCard>
+                <MudTextField @bind-Value="AdminCode" 
+                              name="AdminCode" 
+                              Label="Код доступа" ShrinkLabel="true" 
+                              Variant="Variant.Outlined" 
+                              InputType="InputType.Password" class="ma-1"/>
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           OnClick="CheckAdminCode" class="ma-1">Проверить код администратора</MudButton>
+            </MudCard>
+    
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Inject] protected ISnackbar? _snackBar { get; set; }
+
+    // === Настройки ===
+    [Parameter] public string LogDirectory { get; set; } = "Log"; //;Path.Combine(AppContext.BaseDirectory, "log");
+    [Parameter] public int DefaultLinesPerPage { get; set; } = 1000;
+
+    // === Состояние ===
+    private List<string> LogFiles = new();
+    private string? _selectedFile;
+    private List<string> _currentLines = new();
+    private int _pageIndex = 0;
+    private int _totalPages = 0;
+    private int _linesPerPage;
+
+    private bool AdminCodeAccepted { get; set; }
+    private string DefaultAdminCode { get; set; } = "65535";
+    private string AdminCode { get; set; } = "";
+    
+    protected override void OnInitialized()
+    {
+        _linesPerPage = DefaultLinesPerPage;
+        TryEnsureDirectory();
+        RefreshFileList();
+        if (LogFiles.Count > 0)
+        {
+            _selectedFile = LogFiles[0];
+            LoadPage();
+        }
+    }
+
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     _isAuthorized =
+    //         await AuthHelpers.CheckAuthorized(_getCurrentUserService, _logger, _snackBar); /*NavigationManager*/
+    //     return base.OnInitializedAsync();
+    // }
+    
+    private void TryEnsureDirectory()
+    {
+        try
+        {
+            if (!Directory.Exists(LogDirectory))
+                Directory.CreateDirectory(LogDirectory);
+        }
+        catch { /* ignore */ }
+    }
+
+    private void RefreshFileList()
+    {
+        try
+        {
+            if (Directory.Exists(LogDirectory))
+            {
+                LogFiles = Directory.GetFiles(LogDirectory, "*.log")
+                    .OrderByDescending(f => GetSafeCreationTime(f))
+                    .ThenByDescending(f => GetSafeLastWriteTime(f))
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"LogViewer: ошибка перечисления файлов: {ex.Message}");
+            LogFiles.Clear();
+        }
+    }
+
+
+
+    private static DateTime GetSafeCreationTime(string path)
+    {
+        try { return File.GetCreationTime(path); } catch { return DateTime.MinValue; }
+    }
+    private static DateTime GetSafeLastWriteTime(string path)
+    {
+        try { return File.GetLastWriteTime(path); } catch { return DateTime.MinValue; }
+    }
+
+    private void Reload()
+    {
+        RefreshFileList();
+        _pageIndex = 0;
+        LoadPage();
+    }
+
+    private void LoadPage()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_selectedFile) || !File.Exists(_selectedFile))
+            {
+                _currentLines.Clear();
+                _totalPages = 0;
+                StateHasChanged();
+                return;
+            }
+
+            // Читаем ВЕСЬ файл безопасно, затем нарезаем на страницы.
+            // Если файл огромный, можно заменить на чтение "хвоста" — скажи, сделаю.
+            var content = SafeReadLogWithRetry(_selectedFile);
+            var allLines = content.Replace("\r\n", "\n").Split('\n');
+
+            // Пагинация
+            var totalLines = allLines.Length;
+            _totalPages = Math.Max(1, (int)Math.Ceiling(totalLines / (double)_linesPerPage));
+            _pageIndex = Math.Clamp(_pageIndex, 0, _totalPages - 1);
+
+            var skip = _pageIndex * _linesPerPage;
+            var pageLines = allLines.Skip(skip).Take(_linesPerPage).ToList();
+
+            _currentLines.Clear();
+            _currentLines.AddRange(pageLines.Select(l => l.EndsWith("\r") ? l[..^1] + "\n" : l + "\n"));
+        }
+        catch (IOException ioEx)
+        {
+            _currentLines.Clear();
+            _currentLines.Add($"[I/O] Не удалось прочитать файл: {Path.GetFileName(_selectedFile)}\n{ioEx.Message}\n");
+            _totalPages = 1;
+        }
+        catch (Exception ex)
+        {
+            _currentLines.Clear();
+            _currentLines.Add($"[Ошибка] {ex.GetType().Name}: {ex.Message}\n");
+            _totalPages = 1;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void PrevPage()
+    {
+        if (_pageIndex > 0)
+        {
+            _pageIndex--;
+            LoadPage();
+        }
+    }
+
+    private void NextPage()
+    {
+        if (_pageIndex < _totalPages - 1)
+        {
+            _pageIndex++;
+            LoadPage();
+        }
+    }
+
+    private void _onFileChanged(string file)
+    {
+        _selectedFile = file;
+        _pageIndex = 0;
+        LoadPage();
+    }
+
+    // --- Безопасные ридеры логов (ключ: FileShare.ReadWrite | FileShare.Delete) ---
+    private string SafeReadLog(string path)
+    {
+        // FileShare.ReadWrite | FileShare.Delete — самый «терпимый» режим для конкуренции с Serilog
+        using var fs = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+
+        using var sr = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return sr.ReadToEnd();
+    }
+
+    private string SafeReadLogWithRetry(string path, int attempts = 3, int delayMs = 80)
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            try
+            {
+                return SafeReadLog(path);
+            }
+            catch (IOException) when (i < attempts - 1)
+            {
+                // кратковременная блокировка из-за ротации/AV — подождём и повторим
+                System.Threading.Thread.Sleep(delayMs);
+            }
+        }
+        // последняя попытка — пусть бросит исходную ошибку
+        return SafeReadLog(path);
+    }
+    
+    private void CheckAdminCode()
+    {
+        if (AdminCode == DefaultAdminCode)
+        {
+            AdminCodeAccepted = true;
+            _snackBar?.Add("Код администратора принят.", Severity.Success);
+        }
+        else
+        {
+            AdminCodeAccepted = false;
+            _snackBar?.Add("Код администратора не принят.", Severity.Warning);
+        }
+    }
+}

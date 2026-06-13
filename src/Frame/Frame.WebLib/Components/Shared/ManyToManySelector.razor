@@ -1,0 +1,272 @@
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core
+
+@typeparam TMainEntity where TMainEntity: BaseEntity
+@typeparam TSelectEntity where TSelectEntity: BaseEntity, IBaseGenericEntity<TSelectEntity>, new()
+@typeparam TLinkEntity where TLinkEntity: BaseEntity, IBaseGenericEntity<TLinkEntity>, new()
+
+@if (_configErrors.Length > 0)
+{
+    <MudAlert Severity="Severity.Error">@_configErrors</MudAlert>
+    @* Text="@GetMultiSelectionText()" *@
+}
+else
+{
+    <MudSelect T="TSelectEntity"
+               Label="@Label"
+               Disabled="@Disabled"
+               MultiSelection="true"
+               SelectedValues="@_selectedEntities"
+               Text="@GetMultiSelectionText()" 
+               SelectedValuesChanged="@OnSelectedValuesChanged">
+        @if (_availableEntities != null)
+        {
+            foreach (var item in _availableEntities)
+            {
+                <MudSelectItem Value="@item">
+                    @item.Description
+                </MudSelectItem>
+            }
+        }
+    </MudSelect>
+}
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? _sharedObjectStorage { get; set; }
+
+    /// <summary>
+    /// Если не удалось получить CascadingParameter _sharedObjectStorage - запросим его у DI
+    /// </summary>
+    [Inject] protected IObjectStorageProvider? _objectStorageProvider { get; set; }
+    
+    /// <summary>
+    /// Основной объект, по отношению к которому добавляются/удаляются связанные объекты. Обязательный параметр.
+    /// </summary>
+    [Parameter] public TMainEntity? MainEntity { get; set; }
+    
+    /// <summary>
+    /// Список экземпляров TSelectEntity, доступных для выбора.
+    /// Если не указано - автоматически загрузится полный список объектов типа TSelectEntity => НЕТ! ПОКА УБРАЛ ЭТУ ОПЦИЮ!!! 
+    /// </summary>
+    [Parameter] public List<TSelectEntity>? AvailableEntities { get; set; }
+    
+    /// <summary>
+    /// Список существующих объектов-связок TLinkEntity. Обязательный параметр.
+    /// </summary>
+    [Parameter] public List<TLinkEntity>? ExistingLinks { get; set; }
+    
+    [Parameter] public string Label { get; set; } = "Выберите элементы";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Функция по получению отображаемого объекта TSelectEntity из объекта-связки TLinkEntity. Обязательный параметр.
+    /// </summary>
+    [Parameter] public Func<TLinkEntity, TSelectEntity>? GetSelectEntityFunc { get; set; }
+    
+    /// <summary>
+    /// Функция по созданию нового объекта - связки. Обязательный параметр.
+    /// </summary>
+    [Parameter] public Func<TMainEntity, TSelectEntity, TLinkEntity>? CreateLinkEntityFunc { get; set; }
+    
+    /// <summary>
+    /// CallBack для уведомлений об изменениях.
+    /// </summary>
+    [Parameter] public Action<List<TLinkEntity>>? OnLinksUpdated { get; set; }
+
+    /// <summary>
+    /// Список отмеченных элементов 
+    /// </summary>
+    private List<TSelectEntity>? _selectedEntities;
+    private List<TSelectEntity>? _availableEntities;
+    
+    private string _configErrors = "";
+    
+    private string _value { get; set; } = "Nothing selected";
+    
+    // protected IObjectStorage? ActiveObjectStorage
+    // {
+    //     get
+    //     {
+    //         if (_objectStorage == null)
+    //         {
+    //             if (_sharedObjectStorage != null)
+    //             {
+    //                 _objectStorage = _sharedObjectStorage;
+    //             }
+    //                  
+    //             // Если к этому моменту не удалось инициализировать ObjectStorage - получаем его от DI
+    //             if (_objectStorage == null && _objectStorageProvider != null)
+    //             {
+    //                 Result<IObjectStorage> res = _objectStorageProvider.GetObjectStorage();
+    //                 if (!res.IsError && res.Value != null)
+    //                 {
+    //                     _objectStorage = res.Value;
+    //                 }
+    //             }
+    //         }
+    //         return _objectStorage;
+    //     }
+    //     set => _objectStorage = value;
+    // }
+
+    protected override void OnInitialized()
+    {
+        _configErrors = "";
+        base.OnInitialized();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // if (ActiveObjectStorage != null)
+        {
+            if (!CheckParams()) return;
+
+            // Формируем список выбора 
+            if (_availableEntities == null)
+            {
+                InitAvaliableEntities();
+            }
+            
+            // Формируем список уже выбранных элементов 
+            if (_selectedEntities == null)
+            {
+                InitSelectedEntities();
+            }
+        }
+    }
+
+    private string GetMultiSelectionText()
+    {
+        if (_selectedEntities != null && _selectedEntities.Count > 0)
+        {
+            string res = string.Join(", ", _selectedEntities.Select(x => x.Description)); 
+            return res;        
+        }
+        else
+        {
+            return "Ничего не выбрано";
+        }
+    }
+    
+    private void InitAvaliableEntities()
+    {
+        if (AvailableEntities != null)
+        {
+            _availableEntities = AvailableEntities;
+        }
+        else
+        {
+            // IQueryable<TSelectEntity>? query = ActiveObjectStorage.GetQueryNR<TSelectEntity>();
+            // if (query != null)
+            // {
+            //     _availableEntities = await query.ToListAsync();
+            // }
+        }
+    }
+
+    private void InitSelectedEntities()
+    {
+        if (ExistingLinks != null)
+        {
+            _selectedEntities = [];
+            if (GetSelectEntityFunc != null)
+            {
+                foreach (var link in ExistingLinks)
+                {
+                    var selectEntity = GetSelectEntityFunc(link);
+                    if (selectEntity != null)
+                    {
+                        _selectedEntities.Add(selectEntity);
+                    }
+                }
+            }
+        }
+    }
+
+    private bool CheckParams()
+    {
+        if (MainEntity == null)
+        {
+            _configErrors += $"Не задан параметр {nameof(MainEntity)}! ";
+            return false;
+        }
+
+        if (GetSelectEntityFunc == null)
+        {
+            _configErrors += $"Не задан параметр {nameof(GetSelectEntityFunc)}! ";
+            return false;
+        }
+
+        if (CreateLinkEntityFunc == null)
+        {
+            _configErrors += $"Не задан параметр {nameof(CreateLinkEntityFunc)}! ";
+            return false;
+        }
+            
+        if (ExistingLinks == null)
+        {
+            _configErrors += $"Не задан параметр {nameof(ExistingLinks)}! ";
+            return false;
+        }
+
+        return true;
+    }
+
+    private int GetLinkedEntityId(TLinkEntity linkEntity)
+    {
+        // Этот метод должен быть переопределен через лямбду при использовании
+        throw new NotImplementedException(
+            "Необходимо задать делегат для получения ID связанной сущности"
+        );
+    }
+
+    private void OnSelectedValuesChanged(IEnumerable<TSelectEntity?>? selectedValues)
+    {
+        if (selectedValues == null || ExistingLinks == null || 
+            CreateLinkEntityFunc == null || MainEntity == null || GetSelectEntityFunc == null)
+        {
+            return;
+        }
+        
+        var currentSelectedSet = new List<TSelectEntity?>(selectedValues);
+
+        _selectedEntities = _selectedEntities ?? [];
+        
+        // Сущности, которые были удалены
+        var removedEntities = _selectedEntities.Except(currentSelectedSet).ToList();
+        var addedEntities = currentSelectedSet.Except(_selectedEntities).ToList();
+
+        // Обновление списка связей
+        foreach (var removedEntity in removedEntities)
+        {
+            if (removedEntity != null)
+            {
+                var linkToRemove = ExistingLinks
+                    .FirstOrDefault(link => GetSelectEntityFunc(link).Id == removedEntity.Id);
+            
+                if (linkToRemove != null)
+                {
+                    ExistingLinks.Remove(linkToRemove);
+                }
+            }
+        }
+
+        foreach (var addedEntity in addedEntities)
+        {
+            if (addedEntity != null)
+            {
+                ExistingLinks.Add(CreateLinkEntityFunc(MainEntity, addedEntity));
+            }
+        }
+
+        // Обновление текущего состояния
+        InitSelectedEntities();
+
+        // Вызов обработчика для уведомления родительского компонента
+        OnLinksUpdated?.Invoke(ExistingLinks);
+    }    
+}

@@ -1,0 +1,35 @@
+﻿@page "/savedquery_list"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>Сохраненные запросы</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+ 
+<EntitiesListDetail TEntity="SavedQuery"
+                    TParentComponent="PL_SavedQuery"
+                    Title="Список сохраненных запросов"
+                    ConfigureQuerySpecification="x => x
+                                            .Include(x => x.SavedQueryGroups)
+                                            .Build()"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@SavedQuery" TProperty="@string" Property="x => x.Name" Title="@SavedQuery.Meta.Name.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedQuery" TProperty="@string" Property="x => x.EntityTypeName" Title="@SavedQuery.Meta.EntityTypeName.HumanName"></PropertyColumn>
+        <PropertyColumn T="@SavedQuery" TProperty="@string" Property="x => x.SavedQueryGroupNames" Title="@SavedQuery.Meta.SavedQueryGroupNames.HumanName"></PropertyColumn>
+    </GridContent>
+
+    <FormContent>
+        <CF_SavedQuery FormObject="context"/>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+    [Parameter] public string SystemTag { get; set; } = "";
+}

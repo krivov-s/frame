@@ -1,0 +1,162 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCard>
+            <MudCardHeader>
+                <MudText Typo="Typo.h5">Группа сохранённых фильтров @_formObject?.Name</MudText>
+            </MudCardHeader>
+            <MudDivider />
+            <MudCardContent>
+                @if (_formObject != null)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                        <MudTabPanel Text="Параметры">
+                            <SimpleEditForm @ref="_formSavedFilterGroup"
+                                            TEntity="SavedFilterGroup"
+                                            TParentComponent="CF_SavedFilterGroupFilters"
+                                            Entity="_formObject"
+                                            ShowTitle="false">
+                                <MudGrid>
+                                    <MudItem xs="12" sm="12">
+                                        <MudStack Row="false">
+                                            <FieldEditFactory TEntity="SavedFilterGroup" Entity="_formObject" Field="SavedFilterGroup.Meta.Name" />
+                                            <FieldEditFactory TEntity="SavedFilterGroup" Entity="_formObject" Field="SavedFilterGroup.Meta.Descr" />
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            </SimpleEditForm>
+                        </MudTabPanel>
+                        <MudTabPanel Text="Сохранённые фильтры">
+                            <EntitiesListDetail TEntity="SavedFilterGroupLink"
+                                                TParentComponent="CF_SavedFilterGroupFilters"
+                                                Title="Список сохранённых фильтров"
+                                                Entities="_formObject.SavedFilters"
+                                                EditMode="EntitiesListEditMode.FormContent"
+                                                OnAddNewAsync="_addNewSavedFilterGroupLink">
+                                <GridContent>
+                                    <PropertyColumn T="@SavedFilterGroupLink" TProperty="@string" Property="x => x.SavedFilter != null ? x.SavedFilter.Name : string.Empty" Title="@SavedFilter.Meta.Name.HumanName" />
+                                    <PropertyColumn T="@SavedFilterGroupLink" TProperty="@string" Property="x => x.SavedFilter != null ? x.SavedFilter.Descr : string.Empty" Title="@SavedFilter.Meta.Descr.HumanName" />
+                                </GridContent>
+                            </EntitiesListDetail>
+                        </MudTabPanel>
+                    </MudTabs>
+                }
+                else
+                {
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudCardContent>
+
+        </MudCard>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    /// <summary>
+    /// Объектное хранилище, определенное родительской формой. Без него работать не будем.
+    /// </summary>
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public int id { get; set; }
+    [Parameter] public SavedFilterGroup? FormObject { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_SavedFilterGroupFilters>? _logger { get; set; }
+
+    private SavedFilterGroup? _formObject = null;
+    private SavedFilter? _SavedFilter = null;
+
+    private bool _isAuthorized;
+
+    private SimpleEditForm<SavedFilterGroup, CF_SavedFilterGroupFilters>? _formSavedFilterGroup { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+    protected readonly Dictionary<string, EntitiesListOperation<SavedFilterGroupLink>> Commands = [];
+
+    private async Task<Result<SavedFilterGroupLink>> _addNewSavedFilterGroupLink(IBaseRepository<SavedFilterGroupLink>? repository)
+    {
+        Result<SavedFilterGroupLink> res = Result<SavedFilterGroupLink>.Success(null);
+
+        if (_dialogService != null && repository != null && FormObject != null)
+        {
+            IObjectStorage objectStorage = repository.ObjectStorage;
+
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<SavedFilter>> parameters = new DialogParameters<SelectDialog<SavedFilter>>();
+
+            Result<List<SavedFilter>> resFilters = await objectStorage.GetListAsync<SavedFilter>("Чтение всех отчётов");
+            if (resFilters.IsErrorOrNull)
+            {
+                _snackBar?.Add(resFilters.ErrorResult, Severity.Error);
+                return res;
+            }
+
+            List<SavedFilter> users = resFilters.Value!;
+            if (users.Count == 0)
+            {
+                _snackBar?.Add("Не найдены Фильтры для добавления", Severity.Info);
+                return res;
+            }
+
+            var excludedIDs = new HashSet<int>(FormObject.SavedFilters.Select(p => p.SavedFilter.Id));
+            var filtersClean = users.Where(p => !excludedIDs.Contains(p.Id)).ToList();
+            if (filtersClean.Count > 0)
+            {
+                parameters.Add(x => x.Items, filtersClean);
+                var dialog = await _dialogService.ShowAsync<SelectDialog<SavedFilter>>("Выберите пользователя", parameters, options);
+                var result = await dialog.Result;
+                if (result is { Canceled: false })
+                {
+                    SavedFilter? filter = (SavedFilter?)result.Data;
+                    if (filter != null)
+                    {
+                        SavedFilterGroupLink rel = new()
+                        {
+                            SavedFilterGroupId = FormObject.Id,
+                            SavedFilterGroup = FormObject,
+                            SavedFilterId = filter.Id,
+                            SavedFilter = filter
+                        };
+                        FormObject.SavedFilters.Add(rel);
+                        objectStorage.Add(rel);
+                        _compositeFormState?.SetDirty(true);
+                        return Result<SavedFilterGroupLink>.Success(rel);
+                    }
+                }
+            }
+            else
+            {
+                _snackBar?.Add($"Отсутствуют отчёты для добавления", Severity.Info);
+            }
+        }
+
+        return res;
+    }
+}

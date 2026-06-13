@@ -1,0 +1,94 @@
+@using Frame.Domain
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid>
+            @if (Value != null)
+            {
+                // Заголовок таблицы
+                <MudItem xs="12" sm="1"></MudItem>
+                <MudItem xs="12" sm="2">День</MudItem>
+                <MudItem xs="12" sm="3">Начало</MudItem>
+                <MudItem xs="12" sm="3">Окончание</MudItem>
+                <MudItem xs="12" sm="2">Время в сутки</MudItem>
+                <MudItem xs="12" sm="1">
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" 
+                                   Color="Color.Primary" 
+                                   Edge="Edge.Start" 
+                                   OnClick="@((_) => { 
+                                                Value.CopyTimeFromMonday();
+                                                StateHasChanged(); })" />
+                </MudItem>
+                foreach (KeyValuePair<EWeekDay,WeekDay> kvp in Value.WeekDays)
+                {
+                    <MudFlexBreak />
+                    <MudItem xs="12" sm="1">
+                        <MudCheckBox T="bool"
+                                     Value="kvp.Value.IsWorkDay"
+                                     ValueChanged="v => { 
+                                         kvp.Value.IsWorkDay = v; 
+                                             ValueChanged.InvokeAsync(Value); }">
+                        </MudCheckBox>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <MudTextField T="string"
+                                      ReadOnly="true"
+                                      Value="@kvp.Value.HumanName">
+                        </MudTextField>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudTimePicker Editable="true"
+                                       Time="kvp.Value.Begin.ToTimeSpan()"
+                                       TimeChanged="v => { 
+                                   kvp.Value.Begin = (v  != null) ? 
+                                       TimeOnly.FromTimeSpan((TimeSpan)v) : 
+                                       TimeOnly.MinValue; 
+                                   ValueChanged.InvokeAsync(Value); }">
+                        </MudTimePicker>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudTimePicker Editable="true"
+                                       Time="kvp.Value.End.ToTimeSpan()"
+                                       TimeChanged="v => { 
+                                   kvp.Value.End = (v  != null) ? 
+                                       TimeOnly.FromTimeSpan((TimeSpan)v) : 
+                                       TimeOnly.MinValue; 
+                                   ValueChanged.InvokeAsync(Value); }">
+                        </MudTimePicker>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <MudTextField T="string"
+                                      ReadOnly="true"
+                                      Value="@kvp.Value.WorkingTime.ToString(@"hh\:mm")">
+                        </MudTextField>
+                    </MudItem>
+                }
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="Submit">Закрыть</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+    
+    /// <summary>
+    /// Объект, хранящий сведения о рабочей неделе
+    /// </summary>
+    [Parameter] public WorkWeek? Value { get; set; }
+    
+    /// <summary>
+    /// Оповещения о каждом изменении
+    /// </summary>
+    [Parameter] public EventCallback<WorkWeek> ValueChanged { get; set; }
+
+    private void Submit()
+    {
+        _mudDialog?.Close(DialogResult.Ok(Value));
+    }
+
+    // private void Cancel() => _mudDialog?.Cancel();
+    
+}

@@ -1,0 +1,107 @@
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Metadata
+@using Frame.Domain.Params
+
+<MudSelect T="Type"
+           Value="@_value"
+           ValueChanged="x => OnValueChangedAsync(x)"
+           Disabled="@(!_canModify)"
+           Label="@Label"
+           HelperText="@HelperText"
+           Clearable="true"
+           class="@Class"
+           Variant="@Variant">
+    
+    @if (ShowSimpleTypes)
+    {
+        <MudSelectItem Value="_tInt">@_tInt.Name</MudSelectItem>
+        <MudSelectItem Value="_tString">@_tString.Name</MudSelectItem>
+        <MudSelectItem Value="_tDecimal">@_tDecimal.Name</MudSelectItem>
+        <MudSelectItem Value="_tDateTime">@_tDateTime.Name</MudSelectItem>
+        <MudSelectItem Value="_tDateOnly">@_tDateOnly.Name</MudSelectItem>
+        <MudSelectItem Value="_tBool">@_tBool.Name</MudSelectItem>
+        <MudSelectItem Value="_tFileParam">Загрузка файла</MudSelectItem>
+    }
+    
+    @if (ShowFrameTypes)
+    {
+        foreach (Type entityType in EntityMetadata.GetAllEntitiesClassTypes())
+        {
+            <MudSelectItem Value="@entityType">@entityType.Name</MudSelectItem>
+        }
+    }
+</MudSelect>
+
+@code {
+    /// <summary>
+    /// Значение параметра определяет, доступно ли поле для редактирования.
+    /// Должно быть установлено формой, в которую входит поле.
+    /// Обычно это делается в <see cref="SimpleEditForm{TEntity,TParentComponent}"/>
+    /// </summary>
+    [CascadingParameter(Name="CanModify")] bool _canModify { get; set; }
+    
+    /// <summary>
+    /// Показывать базовые (простые) типы
+    /// </summary>
+    [Parameter] public bool ShowSimpleTypes { get; set; } = true;
+    
+    /// <summary>
+    /// Показывать типы бизнес-объектов, системы
+    /// </summary>
+    [Parameter] public bool ShowFrameTypes { get; set; } = true;
+    
+    /// <summary>
+    /// Наименование поля ввода
+    /// </summary>
+    [Parameter] public string Label { get; set; } = "Тип значения";
+    
+    /// <summary>
+    /// Выбранный тип <see cref="Type.FullName"/>
+    /// </summary>
+    [Parameter] public Type? Value { get; set; }
+    [Parameter] public EventCallback<Type> ValueChanged { get; set; }
+    
+    [Parameter] public string FullTypeName { get; set; } = "";
+    [Parameter] public EventCallback<string> FullTypeNameChanged { get; set; }
+
+    [Parameter] public string Class { get; set; } = "ma-1";
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public string HelperText { get; set; } = "";
+
+    private readonly Type _tInt = typeof(int);
+    private readonly Type _tString = typeof(string);
+    private readonly Type _tDecimal = typeof(decimal);
+    private readonly Type _tDateTime = typeof(DateTime);
+    private readonly Type _tDateOnly = typeof(DateOnly);
+    private readonly Type _tBool = typeof(bool);
+    private readonly Type _tFileParam = typeof(FileParam);
+    
+    private Type? _value;
+    private string _fullTypeName = "";
+    
+    protected override void OnInitialized()
+    {
+        _value = Value;
+        _fullTypeName = FullTypeName;
+
+        if (_value == null && !string.IsNullOrEmpty(_fullTypeName))
+        {
+            _value = Type.GetType(_fullTypeName);
+        }
+        else if(_value != null && string.IsNullOrEmpty(_fullTypeName))
+        {
+            _fullTypeName = EntityMetadata.BiuldExtTypeName(_value);
+        }
+    }
+
+    private async Task OnValueChangedAsync(Type value)
+    {
+        _value = value;
+        Value = value; 
+        await ValueChanged.InvokeAsync(Value);
+        
+        _fullTypeName = EntityMetadata.BiuldExtTypeName(_value);
+        FullTypeName = _fullTypeName;
+        await FullTypeNameChanged.InvokeAsync(FullTypeName);
+    }
+}

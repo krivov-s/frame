@@ -1,0 +1,105 @@
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.Domain.Entities.Core
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Components.Params
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Microsoft.AspNetCore.Components.Web
+
+<SimpleEditForm @ref="_form"
+                TEntity="SavedQuery"
+                TParentComponent="CF_SavedQuery"
+                Entity="_formObject"
+                ShowCloseButton="@ShowCloseButton"
+                ShowTitle="@ShowTitle">
+    @if (_formObject != null)
+    {
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+            @* ========== TabPanel Общие сведения =========== *@
+            <MudTabPanel Text="Общие сведения">
+                <MudGrid>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="SavedQuery" Entity="_formObject" Field="SavedQuery.Meta.Name"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <TypeSelectControl @bind-FullTypeName="_formObject.EntityTypeName"
+                                           ShowSimpleTypes="false"
+                                           Label="@SavedQuery.Meta.EntityTypeName.HumanName"
+                                           class="ma-1"
+                                           Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="5">
+                        <FieldEditFactory TEntity="SavedQuery" Entity="_formObject" Field="SavedQuery.Meta.Select" Lines="3"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="5">
+                        <FieldEditFactory TEntity="SavedQuery" Entity="_formObject" Field="SavedQuery.Meta.Where" Lines="3"></FieldEditFactory>
+                    </MudItem>
+                    <MudItem xs="12" sm="2">
+                        <FieldEditFactory TEntity="SavedQuery" Entity="_formObject" Field="SavedQuery.Meta.OrderBy" Lines="3"></FieldEditFactory>
+                    </MudItem>
+                    @if (FormObject != null && FormObject.Id > 0)
+                    {
+                        <MudItem xs="12" sm="12">
+                            <MudStack Row="true">
+                                <CodeEditorButton @bind-Value="@_formObject.ParamListJson"
+                                                  Title="Редактор списка параметров"
+                                                  Language="AceLanguage.json" />
+                                <ParamListDesignerButton Title="Дизайнер списка параметров"
+                                                         Color="Color.Primary"
+                                                         Variant="Variant.Outlined"
+                                                         Value="@_formObject.ParamListJson"
+                                                         ValueChanged="val => { _formObject.ParamListJson = val; _form?.SetDataChanged(); StateHasChanged(); }" />
+                                <ParamListEditorButton Title="Тестирование списка параметров"
+                                                       Color="Color.Primary"
+                                                       Variant="Variant.Outlined"
+                                                       ShowSaveButton="false"
+                                                       ShowCancelButton="true"
+                                                       CancelButtonText="Закрыть"
+                                                       Value="@_formObject.ParamListJson" />
+                            </MudStack>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudTabPanel>
+            <MudTabPanel Text="Конструктор запросов">
+                <QueryBuilder SavedQuery="_formObject"></QueryBuilder>
+            </MudTabPanel>
+            <MudTabPanel Text="Группы сохранённых запросов">
+                <CF_SavedQueryGroups CurrentQuery="_formObject"></CF_SavedQueryGroups>
+            </MudTabPanel>
+        </MudTabs>
+    }
+</SimpleEditForm>
+
+
+@code {
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    /// <summary>
+    /// Полностью прогруженный (для существующего), готовый к редактированию объект недвижимости
+    /// </summary>
+    [Parameter] public SavedQuery? FormObject { get; set; }
+
+    /// <summary>
+    /// Показывать заголовок формы?
+    /// </summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    /// <summary>
+    /// Показывать кнопку "Закрыть"?
+    /// </summary>
+    [Parameter] public bool ShowCloseButton { get; set; } = false;
+
+    private SavedQuery? _formObject = null;
+    private SimpleEditForm<SavedQuery, CF_SavedQuery>? _form { get; set; }
+    private CodeEditor? _codeEditor { get; set; }
+    // private  SimpleEditForm<SavedQuery, CF_SavedQuery>? _simpleEditForm;
+
+    protected override void OnInitialized()
+    {
+        _formObject = FormObject;
+        base.OnInitialized();
+    }
+
+}

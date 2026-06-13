@@ -1,0 +1,35 @@
+﻿@page "/saved_filter_group_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Queries
+
+<PageTitle>Список групп сохранённых фильтров</PageTitle>
+
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="SavedFilterGroup"
+                    TParentComponent="PL_SavedFilterGroup"
+                    Title="Список групп отчётов"
+                    ConfigureQuerySpecification="spec => spec
+                        .Include(x => x.SavedFilters)
+                        .ThenInclude(x => x.SavedFilter)
+                        .OrderByAsc(u => u.Id)"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@SavedFilterGroup" TProperty="@string" Property="x => x.Name" Title="@SavedFilterGroup.Meta.Name.HumanName" Editable="true" Required="SavedFilterGroup.Meta.Name.Required" />
+        <PropertyColumn T="@SavedFilterGroup" TProperty="@string" Property="x => x.Description" Title="@SavedFilterGroup.Meta.Descr.HumanName" Editable="true" Required="SavedFilterGroup.Meta.Descr.Required" />
+        <PropertyColumn T="@SavedFilterGroup" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <CF_SavedFilterGroupFilters FormObject="context"></CF_SavedFilterGroupFilters>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+
+}

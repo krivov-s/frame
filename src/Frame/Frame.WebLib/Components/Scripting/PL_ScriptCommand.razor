@@ -1,0 +1,223 @@
+﻿@page "/scriptcommand_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.App.Cores
+@using Frame.Domain.Entities.Core.Scripting
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.App.IEntityRepositories
+@using Frame.App.Scripting
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Frame.Domain.Entities.Metadata
+@using Frame.Shared
+@using Frame.WebLib.Controllers
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Routing
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+
+<PageTitle>Скрипт-операции (ScriptCommand)</PageTitle>
+
+
+@* <MudPopoverProvider /> *@
+@* <MudDialogProvider Position="DialogPosition.TopLeft" /> *@
+<MudSnackbarProvider />
+
+
+@{
+    // В режиме EditMode="EntitiesListEditMode.FormContent" это не требуется
+    string strAddNewUri = "scriptcommand/0";
+    string strEditUri = "scriptcommand/{Entity.Id}";
+}
+
+<MudGrid>
+    <MudItem xs="12" sm="12">
+        <EntitiesListDetail TEntity="ScriptCommand"
+                            TParentComponent="PL_ScriptCommand"
+                            Title="Список скрипт-операций"
+                            Operations="Commands"
+                            ConfigureQuerySpecification="spec => 
+                                spec.Include(x => x.ScriptCommandType)
+                                    .Include(x => x.ScriptCommandGroups)
+                                        .ThenInclude(g => g.ScriptCommandGroup)
+                                    .Build()"
+                            AddNewEntityUri="@strAddNewUri"
+                            EditEntityUri="@strEditUri"
+                            EditMode="EntitiesListEditMode.FormContent">
+            <GridContent>
+                <PropertyColumn T="@ScriptCommand" TProperty="@string" Property="x => x.ScriptName" Title="@ScriptCommand.Meta.ScriptName.HumanName" />
+                <PropertyColumn T="@ScriptCommand" 
+                                TProperty="@string" 
+                                Property="x => (x.ScriptCommandType != null) ? x.ScriptCommandType.Name : string.Empty" 
+                                Title="@ScriptCommand.Meta.ScriptCommandType.HumanName" />
+                <PropertyColumn T="@ScriptCommand" TProperty="@string" Property="x => Enum.GetName<ECodeType>(x.CodeType)" Title="@ScriptCommand.Meta.CodeType.HumanName" />
+                <PropertyColumn T="@ScriptCommand" TProperty="@string" Property="x => Enum.GetName<EThreadType>(x.ThreadType)" Title="@ScriptCommand.Meta.ThreadType.HumanName" />
+                <PropertyColumn T="@ScriptCommand" TProperty="@string" Property="x => x.EntityTypeName" Title="@ScriptCommand.Meta.EntityTypeName.HumanName" />
+                <PropertyColumn T="@ScriptCommand" TProperty="@string" Property="x => x.ScriptCommandGroupNames" Title="@ScriptCommand.Meta.ScriptCommandGroupNames.HumanName" />
+            </GridContent>
+
+            <FormContent>
+                <CF_ScriptCommand FormObject="context" />
+            </FormContent>
+
+        </EntitiesListDetail>
+    </MudItem>
+    <MudItem xs="12" sm="12">
+        @* <MudStack Row="true"> *@
+        @*     <MudButton Variant="Variant.Outlined" *@
+        @*                Color="Color.Primary" *@
+        @*                OnClick="_uploadFileAsync" *@
+        @*                StartIcon="@Icons.Material.Filled.CloudUpload"> *@
+        @*         Скачать шаблон *@
+        @*     </MudButton> *@
+        @*     <MudFileUpload T="IBrowserFile" Accept=".json, .json" FilesChanged="OnReportFileChangedAsync"> *@
+        @*         <ActivatorContent> *@
+        @*             <MudTooltip Text="Нажмите для выбора json-файла с операцией"> *@
+        @*                 <MudButton Color="Color.Primary" *@
+        @*                            Variant="Variant.Outlined" *@
+        @*                            StartIcon="@Icons.Material.Filled.UploadFile"> *@
+        @*                     Загрузить шаблон *@
+        @*                 </MudButton> *@
+        @*             </MudTooltip> *@
+        @*         </ActivatorContent> *@
+        @*     </MudFileUpload> *@
+        @*     <MudButton Variant="Variant.Outlined" *@
+        @*                Color="Color.Primary" *@
+        @*                OnClick="_downloadFileAsync" *@
+        @*                StartIcon="@Icons.Material.Filled.CloudDownload"> *@
+        @*         Скачать шаблон *@
+        @*     </MudButton> *@
+        @*     <MudFileUpload T="IBrowserFile" Accept=".xlsx, .pptx" FilesChanged="OnReportFileChangedAsync"> *@
+        @*         <ActivatorContent> *@
+        @*             <MudTooltip Text="Нажмите для выбора json-файла с операцией"> *@
+        @*                 <MudButton Color="Color.Primary" *@
+        @*                            Variant="Variant.Outlined" *@
+        @*                            StartIcon="@Icons.Material.Filled.UploadFile"> *@
+        @*                     Загрузить шаблон *@
+        @*                 </MudButton> *@
+        @*             </MudTooltip> *@
+        @*         </ActivatorContent> *@
+        @*     </MudFileUpload> *@
+        @* </MudStack> *@
+    </MudItem>
+</MudGrid>
+
+
+@code {
+    [Inject] IScriptCore? _scriptCore { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<PL_ScriptCommand>? _logger { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] IJSRuntime? _jsRuntime { get; set; }
+    [Inject] private IUserCore? _userCore { get; set; }
+
+    protected Dictionary<string, EntitiesListOperation<ScriptCommand>> Commands = [];
+
+    protected override void OnInitialized()
+    {
+        Commands.Add("Выполнить", new EntitiesListOperation<ScriptCommand>()
+            {
+                ActiveOnCurrent = true,
+                ActionAsync = ExecuteScriptCommandAsync
+            });
+
+        // if (_userCore == null) return;
+        //
+        // Result<bool> resCan = _userCore.CanSaveAsTemplate<ScriptCommand>();
+        // string entityType = EntityMetadata.BiuldExtTypeName(typeof(ScriptCommand));
+        // if (resCan is { IsErrorOrNull: false, Value: true })
+        // {
+        //     // TODO: разобраться с универсальной генерацией ссылок через LinkGenerator
+        //     Commands.Add("Экспорт", new EntitiesListOperation<ScriptCommand>()
+        //     {
+        //         ActiveOnCurrent = true,
+        //         NewWindow = true,
+        // TODO: формирование этой ссылки работает с ошибкой в гриде: нужно разобраться и доотлаживать
+        //         Href = "/api/ExportEntity?EntityType=" + entityType + "&entityId={Entity.Id}"
+        //     });
+        // }
+    }
+
+    private async Task ExecuteScriptCommandAsync(string strCommand, HashSet<ScriptCommand> commands, IBaseRepository<ScriptCommand> repository)
+    {
+        if (_scriptCore != null)
+        {
+            if (commands.Count != 1)
+            {
+                _snackBar?.Add("Запуск на выполнение разрешен только для одной команды", Severity.Error);
+            }
+            else
+            {
+                ScriptCommand? cmd = commands.FirstOrDefault();
+                if (cmd != null && _dialogService != null && _scriptCore != null)
+                {
+                    await Helpers.ExecuteScriptCommandAsync<ScriptCommand>(cmd, [], repository.ObjectStorage,
+                        _dialogService, _scriptCore, _logger, _snackBar);
+                }
+            }
+        }
+    }
+
+    private Task _downloadFileAsync()
+    {
+        return Task.CompletedTask;
+        // FileDocument fileDoc = new()
+        // {
+        //
+        // };
+        //
+        // Result res = await Helpers.DownloadFileAsync(_jsRuntime, _formObject, _logger, _coreWebSettings);
+        // if (res.IsError)
+        // {
+        //     _snackBar?.Add(res.ErrorResult, Severity.Error);
+        // }
+    }
+    
+    private Task _uploadFileAsync(MouseEventArgs agrs, IBrowserFile? fileFromBrowser)
+    {
+        return Task.CompletedTask;
+        // try
+        // {
+        //     if (fileFromBrowser != null && _formObject != null && 
+        //         _simpleEditForm != null && _fileDocumentService != null &&
+        //         _sharedObjectStorage != null)
+        //     {
+        //         Result res;
+        //         _savingFileToStorage = true;
+        //
+        //         using (MemoryStream ms = new MemoryStream())
+        //         {
+        //             await using (Stream fileStream = fileFromBrowser.OpenReadStream(fileFromBrowser.Size))
+        //             {
+        //                 await fileStream.CopyToAsync(ms);
+        //             }
+        //             ms.Position = 0;
+        //             res = await _fileDocumentService.SaveFileToDocumentAsync(
+        //                 _formObject, ms, fileFromBrowser.Name, _sharedObjectStorage);
+        //         }
+        //
+        //         if (!res.IsError)
+        //         {
+        //             _snackBar?.Add("Загрузка файла успешно завершена!", Severity.Success);
+        //             _simpleEditForm.SetDataUnchanged();
+        //             StateHasChanged();
+        //         }
+        //         else
+        //         {
+        //             _snackBar?.Add(res.ErrorResult, Severity.Error);
+        //         }
+        //     }
+        // }
+        // catch (Exception ex)
+        // {
+        //     string strError = $"Ошибка загрузки файла в хранилище: {ex.Message}";
+        //     _logger?.LogError(strError);
+        //     _snackBar?.Add(strError, Severity.Error);
+        // }
+        // finally
+        // {
+        //     _savingFileToStorage = false;
+        // }
+    }
+    
+    
+}

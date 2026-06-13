@@ -1,0 +1,18 @@
+@page "/role/{id:int}"
+@using Microsoft.AspNetCore.Components.Web
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+<PageTitle>Роль</PageTitle>
+
+<MudSnackbarProvider />
+
+<CompositeForm TParentComponent="PF_Role">
+    <CF_Role Id="Id"></CF_Role>
+</CompositeForm>
+
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+}

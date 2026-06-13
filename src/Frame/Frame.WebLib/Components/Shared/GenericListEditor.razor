@@ -1,0 +1,111 @@
+@typeparam T
+
+<MudDialog>
+    <DialogContent>
+        <MudStack>
+            <MudTable Items="@_editableItems" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>Значение</MudTh>
+                    <MudTh>Действия</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                       OnClick="() => EditItemAsync(context)" 
+                                       Color="Color.Primary" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                       OnClick="() => RemoveItem(context)" 
+                                       Color="Color.Secondary" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudStack Row="true" justifyContent="center">
+                <MudButton OnClick="AddNewAsync" Variant="Variant.Filled" Color="Color.Success">Добавить</MudButton>
+            </MudStack>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Отмена</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Ok</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    [CascadingParameter] 
+    public IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter] public List<T> InitialList { get; set; } = new();
+
+    private List<T> _editableItems = [];
+    // private T? _currentEditItem;
+
+    protected override void OnInitialized()
+    {
+        _editableItems = new List<T>(InitialList);
+    }
+
+    private async Task AddNewAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Не инициализирован IDialogService");
+            return;
+        }
+        
+        var dialog = await _dialogService.ShowAsync<GenericItemEditor<T>>("Добавить элемент");
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: T newItem })
+        {
+            _editableItems.Add(newItem);
+            StateHasChanged();
+        }
+    }
+
+    private async Task EditItemAsync(T item)
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Не инициализирован IDialogService");
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "Item", item }
+        };
+        
+        var dialog = await _dialogService.ShowAsync<GenericItemEditor<T>>("Редактировать элемент", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: T updatedItem })
+        {
+            var index = _editableItems.IndexOf(item);
+            if (index != -1)
+            {
+                _editableItems[index] = updatedItem;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void RemoveItem(T item)
+    {
+        _editableItems.Remove(item);
+        StateHasChanged();
+    }
+
+    private void Submit()
+    {
+        MudDialog?.Close(DialogResult.Ok(_editableItems));
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+}

@@ -1,0 +1,48 @@
+@using Frame.Domain.Entities.Core.Security
+
+<SimpleEditForm @ref="_simpleEditForm"
+                TEntity="RoleClaim"
+                TParentComponent="CF_RoleClaim"
+                Title="@(_buildTitle())"
+                Entity="FormObject">
+    @if (FormObject != null && _simpleEditForm != null)
+    {
+        <MudCard>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" sm="12">
+                        <RefEditFactory TEntity="RoleClaim" 
+                                        Entity="FormObject" 
+                                        Field="RoleClaim.Meta.Role"
+                                        Disabled="true"
+                                        ValueChanged="_simpleEditForm.SetDataChanged"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="RoleClaim" Entity="FormObject" Field="RoleClaim.Meta.ClaimType"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="RoleClaim" 
+                                          Entity="FormObject" 
+                                          Field="RoleClaim.Meta.ClaimValue"
+                                          Lines="10"
+                                          MaxLines="20"
+                                          AutoGrow="true"/>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    }
+</SimpleEditForm>
+
+@code {
+    [Parameter] public RoleClaim? FormObject { get; set; } 
+
+    private SimpleEditForm<RoleClaim, CF_RoleClaim>? _simpleEditForm { get; set; }
+    
+    private string _buildTitle()
+    {
+        return $"Claim для роли {FormObject?.Role?.Name}".Trim();
+    }
+
+    
+}

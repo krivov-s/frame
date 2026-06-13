@@ -1,0 +1,31 @@
+﻿@page "/cronexpression_list"
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Domain.Entities.Core.Scheduler
+
+<PageTitle>Выражения для Cron</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+ 
+<EntitiesListDetail TEntity="CronExpression"
+                    TParentComponent="PL_CronExpression"
+                    Title="Список выражений для Cron"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@CronExpression" TProperty="@string" Property="x => x.Name" Title="@CronExpression.Meta.Name.HumanName"/>
+        <PropertyColumn T="@CronExpression" TProperty="@string" Property="x => x.Expression" Title="@CronExpression.Meta.Expression.HumanName"/>
+        <PropertyColumn T="@CronExpression" TProperty="@string" Property="x => x.Comment" Title="@CronExpression.Meta.Comment.HumanName"/>
+    </GridContent>
+
+    <FormContent>
+        <SimpleEditForm TEntity="CronExpression" TParentComponent="PL_CronExpression" Entity="context"/>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+    [Parameter] public string SystemTag { get; set; } = "";
+}

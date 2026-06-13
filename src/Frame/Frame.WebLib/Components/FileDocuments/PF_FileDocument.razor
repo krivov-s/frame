@@ -1,0 +1,14 @@
+﻿@page "/filedocument"
+
+@* <MudPopoverProvider /> *@
+@* <MudDialogProvider /> *@
+<MudSnackbarProvider />
+
+<CF_FileDocument Id="@Id" OwnerKey="@OwnerKey" OwnerKeyDisabled="@OwnerKeyDisabled" ShowCloseButton="true"/>
+
+@code {
+    [Parameter][SupplyParameterFromQuery] public int Id { get; set; }
+    [Parameter][SupplyParameterFromQuery] public string OwnerKey { get; set; } = "";
+    [Parameter][SupplyParameterFromQuery] public bool OwnerKeyDisabled { get; set; }
+
+}

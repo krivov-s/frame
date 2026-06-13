@@ -1,0 +1,96 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@* Для использования данного компонента во внешнем уровне требуется наличие MudDialogProvider  *@
+
+<MudSnackbarProvider />
+
+<MudTooltip Text="Просмотр и выбор объектов и атрибутов системы">
+    <MudButton Color="Color"
+               Disabled="Disabled"
+               Variant="Variant"
+               OnClick="OpenAttrTreeDialogAsync">@Title</MudButton>
+</MudTooltip>
+
+
+@code {
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] private ILogger<AttrTreeButton>? _logger { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Дерево классов";
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public bool Disabled { get; set; }
+    
+    [Parameter] public Type? EntityType { get; set; }
+    //[Parameter] public bool ClassesOnly { get; set; }
+
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+    [Parameter] public bool ShowCancelButton { get; set; } = true;
+    [Parameter] public bool ShowSelectedAttrs { get; set; } = false;
+    [Parameter] public string SaveButtonText { get; set; } = "Выбрать";
+    [Parameter] public string CancelButtonText { get; set; } = "Отмена";
+    
+    /// <summary>
+    /// Список выбранных классов и атрибутов в виде строки
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    
+    [Parameter] public IReadOnlyCollection<AttrTreeDialog.PropertyData> SelectedAttrs { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyCollection<AttrTreeDialog.PropertyData>> SelectedAttrsChanged { get; set; }
+    
+    private async Task OpenAttrTreeDialogAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Сервис диалога не доступен", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            DialogOptions options = new DialogOptions
+            {
+                CloseOnEscapeKey = true,
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                Position = DialogPosition.Center
+            };   
+            
+            DialogParameters parameters = new DialogParameters
+            {
+                {"EntityType", EntityType},
+                //{"ClassesOnly", ClassesOnly},
+                {"ShowSaveButton", ShowSaveButton},
+                {"ShowCancelButton", ShowCancelButton},
+                {"ShowSelectedAttrs", ShowSelectedAttrs},
+                {"SaveButtonText", SaveButtonText},
+                {"CancelButtonText", CancelButtonText}
+            };
+
+            var dialog = await _dialogService.ShowAsync<AttrTreeDialog>("Дерево классов", parameters, options);
+            var result = await dialog.Result;
+
+            if (result is { Canceled: false })
+            {
+                if (result.Data is IReadOnlyCollection<AttrTreeDialog.PropertyData>)
+                {
+                    // Список атрибутов (коллекция)
+                    SelectedAttrs = (IReadOnlyCollection<AttrTreeDialog.PropertyData>)result.Data;
+                    await SelectedAttrsChanged.InvokeAsync(SelectedAttrs);
+                    // Список атрибутов в виде строки
+                    Value = string.Join(", ", SelectedAttrs);
+                    await ValueChanged.InvokeAsync(Value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _snackBar?.Add(ex.Message, Severity.Error);
+        }
+    }
+}

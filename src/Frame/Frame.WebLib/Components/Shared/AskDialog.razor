@@ -1,0 +1,27 @@
+﻿<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@DialogTitle</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="InputText" 
+                      Label="@FieldLabel" 
+                      Variant="Variant.Outlined"
+                      AutoFocus="true"/>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Отмена</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">OK</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+    [Parameter] public string DialogTitle { get; set; } = "Введите значение";
+    [Parameter] public string FieldLabel { get; set; } = "Наименование поля";
+    [Parameter] public string DefaultValue { get; set; } = "Значение по-умолчанию";
+
+    private string InputText { get; set; } = "";
+
+    void Submit() => _mudDialog?.Close(DialogResult.Ok(InputText));
+    void Cancel() => _mudDialog?.Cancel();
+}

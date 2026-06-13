@@ -1,0 +1,146 @@
+﻿@page "/role_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Security
+@using Microsoft.Extensions.Logging
+
+<PageTitle>Список ролей</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="Role" 
+                    TParentComponent="PL_Role"
+                    Title="Список ролей"
+                    EditMode="EntitiesListEditMode.ExternalUri"
+                    Operations="_operationList">
+    <GridContent>
+        <PropertyColumn T="@Role" TProperty="@string" Property="x => x.Name" Title="@Role.Meta.Name.HumanName"></PropertyColumn>
+        <PropertyColumn T="@Role" TProperty="@string" Property="x => x.Descr" Title="@Role.Meta.Descr.HumanName"></PropertyColumn>
+        <PropertyColumn T="@Role" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+</EntitiesListDetail>
+
+
+@code {
+    [Inject] ILogger<PL_Role>? _logger { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    private readonly Dictionary<string, EntitiesListOperation<Role>> _operationList = [];
+    private EntitiesListDetail<Role,PL_Role>? _entitiesListDetail { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _operationList.Add("Копировать роль",
+            new() { ActiveOnCurrent = true, ActionAsync = CopyRoleAsync });
+    }
+
+    protected async Task CopyRoleAsync(string menuName, HashSet<Role> set, IBaseRepository<Role> repository)
+    {
+        if (_entitiesListDetail == null)
+        {
+            string err = "Отсутствует переменная с экземпляром EntitiesListDetail";
+            _logger?.LogError("{Err}", err);
+            _snackBar?.Add(err, Severity.Error);
+            return;
+        }
+        
+        if (set.Count > 1)
+        {
+            string strError = "Для копирования должна быть выбрана строго одна роль.";
+            _snackBar?.Add(strError, Severity.Error);
+            return;
+        }
+
+        Role? role = set.FirstOrDefault();
+        if (role is null)
+        {
+            string strError = "Не выбрана роль для копирования";
+            _snackBar?.Add(strError, Severity.Error);
+            return;
+        }
+
+        if (role.Id == 0)
+        {
+            string strError = "Роль сначала должна быть сохранена!";
+            _snackBar?.Add(strError, Severity.Error);
+            return;
+        }
+
+        if (repository.ObjectStorage.IsDirty)
+        {
+            string strError = "Перед копированием все изменения должны быть сохранены!";
+            _snackBar?.Add(strError, Severity.Error);
+            return;
+        }
+
+        int roleId = role.Id;
+
+        Result<Role> resRole = await repository.ObjectStorage.GetObjAsync<Role>(spec =>
+            spec.Include(r => r.UsersRoles)
+                .Include(r => r.RoleClaims)
+                .Include(r => r.EntityRights)
+                .Where(r => r.Id == roleId));
+
+        if (resRole.IsError || resRole.Value == null)
+        {
+            _snackBar?.Add(resRole.ErrorResult, Severity.Error);
+            return;
+        }
+
+        try
+        {
+            Role roleSrc = resRole.Value;
+            Role roleDst = roleSrc.Clone<Role>();
+            roleDst.RoleClaims = [];
+            roleDst.UsersRoles = [];
+            roleDst.EntityRights = [];
+            roleDst.Name = $"Копия {roleDst.Name}";
+            roleDst.NormalizedRoleName = "";
+
+            // Копируем все Clams
+            foreach (RoleClaim claim in roleSrc.RoleClaims)
+            {
+                RoleClaim claimNew = claim.Clone<RoleClaim>();
+                claimNew.RoleId = 0;
+                claimNew.Role = roleDst;
+                roleDst.RoleClaims.Add(claimNew);
+                repository.ObjectStorage.Add(claimNew);
+            }
+        
+            // Копируем все права TEntityRights
+            foreach (TEntityRights right in roleSrc.EntityRights)
+            {
+                TEntityRights rightNew = right.Clone<TEntityRights>();
+                rightNew.RoleId = 0;
+                rightNew.Role = roleDst;
+                roleDst.EntityRights.Add(rightNew);
+                repository.ObjectStorage.Add(rightNew);
+            }
+
+            repository.ObjectStorage.Add(roleDst);
+            
+            Result resSave = await repository.ObjectStorage.SaveChangesAsync();
+            if (resSave.IsError)
+            {
+                _snackBar?.Add(resSave.ErrorResult, Severity.Error);
+            }
+            else
+            {
+                await _entitiesListDetail.RefreshAsync();
+                _snackBar?.Add($"Создана роль с именем {roleDst.Name}", Severity.Success);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            string err = $"Ошибка клонирования объекта {nameof(Role)}: {ex.Message}";
+            _snackBar?.Add(err, Severity.Error);
+            _logger?.LogError(ex, "{Err}", err);
+        }
+    }
+    
+}

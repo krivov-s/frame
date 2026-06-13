@@ -1,0 +1,202 @@
+﻿@typeparam TParentComponent where TParentComponent : class
+
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+@using Frame.Shared
+@using Frame.App.Security
+@using Frame.App.IEntityRepositories
+
+
+<ErrorBoundary>
+<ChildContent>
+    <MudCard>
+        @if (_isAuthorized)
+        {
+            MarkupString mstrTitle = BuildTitle();
+            if (mstrTitle.Value.Length > 0)
+            {
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="@TitleTypo">@mstrTitle</MudText>
+                        <MudDivider />
+                    </CardHeaderContent>
+                </MudCardHeader>
+            }
+            <MudCardContent>
+                @*Во вложенные компоненты отдаем состояние формы. По нему мы будем отслеживать необходимость сохранения в БД.*@
+                <CascadingValue Value="@_formState">
+                @* Также во вложенные компоненты отдаем наш ObjectStorage, чтобы все данны считывались из одного хранилища *@
+                <CascadingValue Value="@_objectStorage">
+                    @*===================================================*@
+                    @*Собственно здесь то, что будет отображаться в форме*@
+                    @ChildContent
+                    @*===================================================*@
+                </CascadingValue>
+                </CascadingValue>
+            </MudCardContent>
+            <MudCardActions>
+                @if (IsDirty)
+                {
+                    if(ShowSaveButton)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveAsync" class="ma-1">Сохранить все сделанные изменения</MudButton>
+                    }
+                }
+                @if(ShowCloseButton)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CancelAsync" class="ma-1">Закрыть вкладку</MudButton>
+                }
+            </MudCardActions>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+        }
+    </MudCard>
+</ChildContent>
+<ErrorContent Context="ctx">
+    <p class="errorUI">😈 Какая-то хрень </p>
+</ErrorContent>
+</ErrorBoundary>
+
+
+@code {
+    /// <summary>
+    /// Поля, которые должны отображаться на форме. Если не задано - будет построено динамически на основании метаданных.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }    
+    /// <summary>
+    /// Объектное хранилище, из которого будут считываться данные. Если не задано - будет получено от сервера через DI.
+    /// </summary>
+    [Parameter] public IObjectStorage? ObjectStorage { get; set; }
+    /// <summary>
+    /// Статический заголовок окна
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+    /// <summary>
+    /// Функция динамического получения заголовка окна
+    /// </summary>
+    [Parameter] public Func<string>? DynamicTitle { get; set; }
+    /// <summary>
+    /// Стиль шрифта заголовка. По-умолчанию <see cref="Typo.h6"/>
+    /// </summary>
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.h6;
+    /// <summary>
+    /// Показывать кнопку "Закрыть"?
+    /// </summary>
+    [Parameter] public bool ShowCloseButton { get; set; } = true;
+    /// <summary>
+    /// Показывать кнопку "Сохранить"?
+    /// </summary>
+    [Parameter] public bool ShowSaveButton { get; set; } = true;
+
+    [Inject] IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] protected IObjectStorageProvider? _objectStorageProvider { get; set; }
+    [Inject] protected ISnackbar? _snackBar { get; set; }
+    [Inject] protected IJSRuntime? JSRuntime { get; set; }
+    [Inject] protected IAuthService? _authService { get; set; }
+    [Inject] ILogger<TParentComponent>? _logger { get; set; }
+
+    protected CompositeFormState? _formState = null;
+
+    /// <summary>
+    /// Хранилище, с которым работает форма. Инициализируется или из DI или из параметра формы <see cref="ObjectStorage" />
+    /// </summary>
+    protected IObjectStorage? _objectStorage = default;
+
+    protected bool _isAuthorized = false;
+
+    // public static int _initCount = 0;
+
+    protected MarkupString BuildTitle()
+    {
+        string title = "";
+
+        if (DynamicTitle != null)
+        {
+            title = DynamicTitle();
+        }
+
+        if(title.Length == 0)
+        {
+            title = Title;
+        }
+
+        return new MarkupString(title);
+    }
+
+    /// <summary>
+    /// Свойство показывает, есть ли изменения в <see cref="ObjectStorage" /> формы или в дочерних компонентах через <see cref="CompositeFormState" />
+    /// </summary>
+    protected bool IsDirty 
+    { 
+        get
+        {
+            if (_objectStorage != null && _objectStorage.IsDirty)
+            {
+                return true;
+            }
+            if (_formState != null && _formState.IsDirty)
+            {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        //_initCount++;
+        // Console.WriteLine($"========== {typeof(TParentComponent).Name} CompositeForm InitCount = {_initCount} ========== ");
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar); /*NavigationManager*/
+
+        if (ObjectStorage != null)
+        {
+            _objectStorage = ObjectStorage;
+        }
+        else if(_objectStorageProvider != null)
+        {
+            Result<IObjectStorage> res = _objectStorageProvider.GetObjectStorage();
+            if (res.IsError || res.Value == null)
+            {
+                throw new Exception($"Не удалось получить ObjectStorage от IObjectStorageProvider: {res.ErrorResult}");
+            }
+            _objectStorage = res.Value;
+        }
+
+        if (_objectStorage != null)
+        {
+            _formState = new();
+            _formState.OnStateChanged = EventCallback.Factory.Create(this, StateHasChanged);
+        }
+    }
+
+    public async Task SaveAsync()
+    {
+        if (_objectStorage != null)
+        {
+            Result resSaved = await _objectStorage.SaveChangesAsync();
+            if (resSaved.IsError)
+            {
+                _snackBar?.Add($"Ошибка сохранения в БД: {resSaved.ErrorResult}", Severity.Error);
+            }
+            else
+            {
+                _snackBar?.Add($"Успешно сохранено", Severity.Success);
+                _formState?.SetDirty(false);
+                StateHasChanged();
+            }
+        }
+    }
+
+    public async Task CancelAsync()
+    {
+        if (JSRuntime != null)
+        {
+            await JSRuntime.InvokeVoidAsync("window.close");
+        }
+        // await GoBackAsync();
+    }
+}

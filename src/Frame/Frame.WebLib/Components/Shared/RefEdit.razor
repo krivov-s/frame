@@ -1,0 +1,84 @@
+﻿@* Тип основного объекта, для одного из атрибутов которого создается RefEdit *@
+@typeparam TEntity where TEntity : class, new()
+@typeparam TRefEntity where TRefEntity : BaseEntity, IBaseGenericEntity<TRefEntity>, new()
+
+@using Frame.Domain.Entities.Core
+
+@* 
+    Здесь не должно быть никаких провайдеров от MudBlazor, иначе начинаются непонятные конфликты.
+    Все провайдеры - в формах, которые подключают этот компонент.
+ *@
+
+<div class="d-flex">
+    <style>
+        .mud-button-root.d-flex {
+            flex-direction: row;
+        }
+    </style>
+    
+    <style>
+    /* 1. Контейнер-строка */
+    .refedit-row {
+        display: flex;
+        align-items: flex-start;        /* center - вертикальное центрирование */
+        gap: .2rem;                    /* расстояние между полем и кнопкой */
+        width: 100%;                    /* растягиваем на всю ширину */
+    }
+
+    /* 2. Текстовое поле тянется*/
+    .refedit-field {
+        flex: 1 1 0;                    /* «Расти» сколько можешь, но не меньше 0 */
+        min-width: 0;                   /* НЕ позволяй ширине оставаться фиксированной */
+    }
+
+    /* 3. Кнопка-круг фиксированной ширины */
+    .refedit-btn {
+        --btn: 32px;             /* объявляем переменную-диаметр */
+        flex: 0 0 var(--btn);        /* не растягивать, не сжимать, взять ровно var(--btn) */
+        width: var(--btn);
+        height: var(--btn);
+        border-radius: 50%;          /* делает форму идеальным кругом */
+        padding: 0;                  /* убирает внутренние отступы */
+        margin-top: 0.5rem;
+    }
+    </style>
+    
+    <div class="refedit-row">
+        <MudTextField T="string"
+                      @bind-Value="@Text"
+                      Label="@Label"
+                      Variant="@Variant"
+                      Margin="@Margin"
+                      Required="@Required"
+                      RequiredError="@RequiredError"
+                      Error="@_hasErrors"
+                      ErrorText="@GetErrorText()"
+                      HelperText="@_helperText"
+                      Disabled="@Disabled"
+                      Immediate="true"
+                      Validation="@_validation"
+                      InputType="@InputType"
+                      Placeholder="@Placeholder"
+                      Class="refedit-field"
+                      Adornment="Adornment.End"
+                      AdornmentIcon="@Icons.Material.Filled.AddCircleOutline"
+                      AdornmentColor="Color.Info"
+                      OnAdornmentClick="OpenDialogAsync"
+                      Clearable="true"
+                      OnClearButtonClick="Clear"
+                      ondblclick="@(async () => await OpenDialogAsync())"/>
+        @if (_hrefUrl.Length > 0)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                           Color="Color.Primary"
+                           Class="refedit-btn"
+                           OnClick="OpenHref"
+                           Title="@_hrefText"/>
+        }
+    </div>
+</div>
+
+
+
+
+

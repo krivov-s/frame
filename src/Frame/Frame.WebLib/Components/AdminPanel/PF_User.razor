@@ -1,0 +1,19 @@
+@page "/user/{id:int}"
+@using Microsoft.AspNetCore.Components.Web
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+<PageTitle>Пользователь</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<CompositeForm TParentComponent="PF_User">
+    <CF_User Id="Id"></CF_User>
+</CompositeForm>
+
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+}

@@ -1,0 +1,33 @@
+﻿@page "/scriptcommand_type_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.Scripting
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>Типы отчетов</PageTitle>
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="ScriptCommandType"
+              TParentComponent="PL_ScriptCommandType"
+              Title="Список типов скрипт-операций"
+              EditMode="EntitiesListEditMode.FormContent">
+
+    <GridContent>
+        <PropertyColumn T="@ScriptCommandType" TProperty="@string" Property="x => x.Name" Title="@ScriptCommandType.Meta.Name.HumanName"/>
+        <PropertyColumn T="@ScriptCommandType" TProperty="@string" Property="x => x.Descr" Title="@ScriptCommandType.Meta.Descr.HumanName"/>
+        <PropertyColumn T="@ScriptCommandType" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <SimpleEditForm TEntity="ScriptCommandType"
+                        TParentComponent="PL_ScriptCommandType"
+                        Entity="context">
+        </SimpleEditForm>
+    </FormContent>
+</EntitiesListDetail>
+
+@code {
+
+}

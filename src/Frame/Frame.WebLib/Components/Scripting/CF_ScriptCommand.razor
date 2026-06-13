@@ -1,0 +1,219 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.Scripting
+@using Microsoft.AspNetCore.Components.Web
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityLoaders
+@using Frame.Domain.Entities.Core
+@using Frame.Shared
+@using Frame.WebLib.Components.Params
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Scheduler
+
+<SimpleEditForm @ref="_form" TEntity="ScriptCommand" 
+                Entity="FormObject" TParentComponent="CF_ScriptCommand"
+                ShowCloseButton="@ShowCloseButton"
+                ShowTitle="@ShowTitle">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="Параметры">
+            <MudGrid>
+                @if (FormObject != null && _form != null)
+                {
+                    // ========== LINE 1 ==========
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand"
+                                          Entity="FormObject"
+                                          Field="ScriptCommand.Meta.CommandType"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand" Entity="FormObject" Field="ScriptCommand.Meta.ScriptName"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <CronTemplateEditor TEntity="ScriptCommand" 
+                                            Entity="FormObject" 
+                                            Field="ScriptCommand.Meta.CronExpression"
+                                            ValueChanged="() => {
+                                                _form.SetDataChanged();
+                                                StateHasChanged();
+                                            }"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand" Entity="FormObject" Field="ScriptCommand.Meta.ScheduleEnabled"/>
+                    </MudItem>
+                    // ========== LINE 2 ==========
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand"
+                                          Entity="FormObject"
+                                          Disabled="FormObject.CommandType == ECommandType.DataSource"
+                                          Field="ScriptCommand.Meta.CodeType"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand" 
+                                          Entity="FormObject" 
+                                          Field="ScriptCommand.Meta.ThreadType"
+                                          Disabled="FormObject.CommandType == ECommandType.DataSource"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <RefEditFactory TEntity="ScriptCommand" 
+                                        Entity="FormObject" 
+                                        Field="ScriptCommand.Meta.ScriptCommandType"
+                                        ValueChanged="_form.SetDataChanged"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <TypeSelectControl @bind-FullTypeName="FormObject.EntityTypeName"
+                                           ShowSimpleTypes="false"
+                                           Label="@ScriptCommand.Meta.EntityTypeName.HumanName"
+                                           class="ma-1"
+                                           HelperText="@ScriptCommand.Meta.EntityTypeName.HelperText"
+                                           Variant="Variant.Outlined"/>
+                    </MudItem>
+                    // ========== LINE 3 ==========
+                    <MudItem xs="12" sm="9">
+                        <FieldEditFactory TEntity="ScriptCommand" 
+                                          Entity="FormObject"
+                                          MaxLines="3"
+                                          AutoGrow="true"
+                                          Field="ScriptCommand.Meta.Comment"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <FieldEditFactory TEntity="ScriptCommand" Entity="FormObject" Field="ScriptCommand.Meta.SystemTag"/>
+                    </MudItem>
+                    if (FormObject.Id > 0 && _canModify)
+                    {
+                        // ========== LINE 4 ==========
+                        <MudItem xs="12" sm="12">
+                            <MudStack Row="true">
+                                <CodeEditorButton @bind-Value="@FormObject.ScriptCode"
+                                                  GetInitialCodeSample="SetDefaultScriptCode"
+                                                  Title="Редактор кода скрипта"
+                                                  ShowCompileButton="true"
+                                                  Language="AceLanguage.csharp"/>
+                                <CodeEditorButton @bind-Value="@FormObject.ParamListJson"
+                                                  Title="Редактор списка параметров"
+                                                  Language="AceLanguage.json"/>
+                                <ParamListDesignerButton Title="Дизайнер списка параметров"
+                                                         Color="Color.Primary"
+                                                         Variant="Variant.Outlined"
+                                                         Value="@FormObject.ParamListJson"
+                                                         ValueChanged="val => { FormObject.ParamListJson = val; _form?.SetDataChanged(); StateHasChanged(); }"/>
+                                <ParamListEditorButton Title="Тестирование списка параметров"
+                                                       Color="Color.Primary"
+                                                       Variant="Variant.Outlined"
+                                                       ShowSaveButton="false"
+                                                       ShowCancelButton="true"
+                                                       CancelButtonText="Закрыть"
+                                                       Value="@FormObject.ParamListJson"/>
+                            </MudStack>
+                        </MudItem>
+                    }
+                }
+            </MudGrid>
+        </MudTabPanel>
+        <MudTabPanel Text="Группы скриптов">
+            <CF_ScriptCommandGroups CurrentCommand="FormObject"></CF_ScriptCommandGroups>
+        </MudTabPanel>
+    </MudTabs>
+
+</SimpleEditForm>
+
+@code {
+    [Inject] private IFrameSettingsLoader? _frameSettingsLoader { get; set; }
+    
+    [Parameter] public ScriptCommand? FormObject { get; set; }
+    /// <summary>
+    /// Показывать заголовок формы?
+    /// </summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+    
+    /// <summary>
+    /// Показывать кнопку "Закрыть"?
+    /// </summary>
+    [Parameter] public bool ShowCloseButton { get; set; }
+
+    private CodeEditor? _codeEditorParams { get; set; }
+    private SimpleEditForm<ScriptCommand, CF_ScriptCommand>? _form { get; set; }
+    
+    private AceEditorOptions _opt = new()
+    {
+        IsReadOnly = false, 
+        Language = AceLanguage.csharp, 
+        Theme = AceTheme.eclipse
+    };
+
+    private string _classVisible = "visible";
+    private FrameSettings? _frameSettings;
+
+    private bool _canView = true;
+    private bool _canModify = true;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        if (_frameSettingsLoader != null)
+        {
+            Result<FrameSettings> resSettings = await _frameSettingsLoader.InitFrameSettingsAsync();
+            if (resSettings.IsError || resSettings.Value == null)
+            {
+                return;
+            }
+
+            _frameSettings = resSettings.Value;
+        }
+    }
+    
+    private void _canViewSet(bool canView) => _canView = canView;   
+    private void _canModifySet(bool canModify) => _canModify = canModify;
+    
+    private void SetCodeVisible(bool visible)
+    {
+        _classVisible = visible ? "visible" : "invisible";
+        StateHasChanged();
+    }
+
+    private string SetDefaultScriptCode()
+    {
+        if (FormObject == null || _frameSettings == null)
+        {
+            return "";
+        }
+        
+        if (FormObject.ScriptCode.Length > 0)
+        {
+            return FormObject.ScriptCode;
+        }
+
+        if (FormObject.CommandType == ECommandType.DataSource)
+        {
+            FormObject.ScriptCode = _frameSettings.ScriptCommandDataSourceCodeSample;
+        }
+        else
+        {
+            switch (FormObject.CodeType)
+            {
+                case ECodeType.SimpleMethod:
+                    switch (FormObject.ThreadType)
+                    {
+                        case EThreadType.Sync:
+                            FormObject.ScriptCode = _frameSettings.ScriptCommandMethodSyncCodeSample;
+                            break;
+                        case EThreadType.Async:
+                            FormObject.ScriptCode = _frameSettings.ScriptCommandMethodAsyncCodeSample;
+                            break;
+                    }
+                    break;
+                case ECodeType.Class:
+                    switch (FormObject.ThreadType)
+                    {
+                        case EThreadType.Sync:
+                            FormObject.ScriptCode = _frameSettings.ScriptCommandClassSyncCodeSample;
+                            break;
+                        case EThreadType.Async:
+                            FormObject.ScriptCode = _frameSettings.ScriptCommandClassAsyncCodeSample;
+                            break;
+                    }
+                    break;
+            }
+        }
+
+        return FormObject.ScriptCode;
+    }
+}

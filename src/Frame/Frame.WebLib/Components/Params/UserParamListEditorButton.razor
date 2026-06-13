@@ -1,0 +1,127 @@
+﻿@using Frame.App.Cores
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Params
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@* Для использования данного компонента во внешнем уровне требуется наличие MudDialogProvider  *@
+<MudSnackbarProvider />
+
+@if (_userCore != null)
+{
+    <MudTooltip Text="Просмотр и редактирование списка параметров пользователя">
+        <MudIconButton Icon="@Icons.Material.Filled.DisplaySettings" 
+                       Color="Color.Primary" 
+                       Edge="Edge.Start"
+                       Disabled="_isEmptyParamList"
+                       OnClick="@((_) => OpenDynamicFormDialogAsync())" />
+    </MudTooltip>
+}
+
+
+@code {
+    [Inject] private IUserCore? _userCore { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private IObjectStorage? _objectStorage { get; set; }
+    [Inject] private IDialogService? _dialogService { get; set; }
+    [Inject] private ILogger<UserParamListEditorButton>? _logger { get; set; }
+
+    [Parameter] public bool UseOwnMudDialogProvider { get; set; } = false;
+    
+    /// <summary>
+    /// Событие, говорящее о том, что произошли изменения (любой) в списке параметров
+    /// </summary>
+    [Parameter] public EventCallback OnParamListChanged { get; set; }
+    
+    private ParamList? _userParamList = null;
+    private dynamic? _userParamListD = null;
+
+    private bool _isEmptyParamList => _userParamList == null || _userParamList.CountVisible == 0;
+    
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        if (_userCore is { CurrentUserLogin.Length: > 0, UserParamList: not null })
+        {
+            _userParamList = _userCore.UserParamList;
+            _userParamListD = _userCore.UserParamList;
+        }
+    }
+
+    private async Task OpenDynamicFormDialogAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Сервис диалога не доступен", Severity.Error);
+            return;
+        }
+
+        if (_userCore == null)
+        {
+            _snackBar?.Add("UserCore не доступен", Severity.Error);
+            return;
+        }
+        
+        if (_userParamList == null)
+        {
+            _snackBar?.Add("Не удалось получить список параметров пользователя", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            DialogOptions options = new DialogOptions
+            {
+                CloseOnEscapeKey = true,
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                Position = DialogPosition.Center
+            };
+
+            string paramListJsonSrc = _userParamList.ToJson();
+            DialogParameters parameters = new DialogParameters
+            {
+                {
+                    "ParamListJson", paramListJsonSrc
+                }
+            };
+
+            _logger?.LogInformation("_dialogService.ShowAsync");
+            var dialog = await _dialogService.ShowAsync<ParamListDynamicForm>("Настройки", parameters, options);
+            var result = await dialog.Result;
+
+            if (result == null || result.Canceled)
+            {
+                _snackBar?.Add("Изменения не были сохранены", Severity.Info);
+            }
+            else
+            {
+                if (result.Data is string paramListJson)
+                {
+                    if (paramListJson != paramListJsonSrc)
+                    {
+                        _userCore.UserParamList.FromJson(paramListJson);
+                        await OnParamListChanged.InvokeAsync();
+                        Result res = await _userCore.SaveUserProfileAsync();
+                        if (!res.IsError)
+                        {
+                            _snackBar?.Add("Список параметров пользователя сохранен в БД", Severity.Success);
+                        }
+                        else
+                        {
+                            _snackBar?.Add($"Ошибка при сохранении параметров пользователя в БД: {res.ErrorResult}", Severity.Error);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _snackBar?.Add(ex.Message, Severity.Error);
+        }
+    }
+}

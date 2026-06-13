@@ -1,0 +1,91 @@
+@using Frame.Domain.Entities.Core 
+@using Microsoft.AspNetCore.Components.Web
+
+@typeparam TEntity where TEntity : BaseEntity, IBaseGenericEntity<TEntity>, new()
+
+<MudTextField
+    Label="@Label"
+    Value="@Text"
+    Class="@Class"
+    OnClearButtonClick="x => ClearButtonClicked(x)"
+    Disabled="Disabled"
+    Variant="Variant"
+    Adornment="Adornment.Start"
+    AdornmentColor="Color.Info"
+    Clearable="true"
+    AdornmentIcon="@Icons.Material.Filled.SavedSearch"
+    OnAdornmentClick="ShowSelectDialogAsync"
+    ReadOnly="true"
+    @ondblclick="ShowSelectDialogAsync" />
+
+@code {
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+
+    [Parameter] public List<TEntity> Items { get; set; } = [];
+    [Parameter] public TEntity? Value { get; set; }
+    [Parameter] public EventCallback<TEntity> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public string AdornmentIcon { get; set; } = Icons.Material.Filled.Search;
+
+    /// <summary>
+    /// Значание, которое отображается пользователю
+    /// </summary>
+    public string Text
+    {
+        get
+        {
+            if (Value != null)
+            {
+                _text = Value.Description;
+            }
+            return _text;
+        }
+        set => _text = value;
+    }
+    private string _text = "";
+    
+    private async Task ShowSelectDialogAsync()
+    {
+        if (_dialogService == null)
+        {
+            _snackBar?.Add("Не инициализирован IDialogService", Severity.Error);
+            return;
+        }
+
+        if (Items.Count == 0)
+        {
+            await _dialogService.ShowMessageBox("", "Список для выбора пуст!");
+            return;
+        }
+
+        if (_dialogService != null && _snackBar != null)
+        {
+            DialogOptions options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            DialogParameters<SelectDialog<TEntity>> parameters = new()
+            {
+                { x => x.Items, Items },
+                { x => x.Title, Label},
+                { x => x.Filterable, false}
+            };
+            
+            var dialog = await _dialogService.ShowAsync<SelectDialog<TEntity>>($"", parameters, options);
+            var r = await dialog.Result;
+            if (r != null && !r.Canceled)
+            {
+                Value = (TEntity?)r.Data;
+                await ValueChanged.InvokeAsync(Value);
+            }
+        }
+    }
+
+    private async Task ClearButtonClicked(MouseEventArgs args)
+    {
+        Value = null;
+        await ValueChanged.InvokeAsync(Value);
+    }
+    
+}

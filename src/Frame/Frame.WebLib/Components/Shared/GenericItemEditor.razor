@@ -1,0 +1,163 @@
+@typeparam T
+
+<MudDialog>
+    <DialogContent>
+        @if (typeof(T) == typeof(DateTime) || typeof(T) == typeof(DateTime?))
+        {
+            <MudDatePicker @bind-Date="_dateValue" Label="@Label" Editable="true"/>
+            <MudTimePicker @bind-Time="_timeValue" Label="@Label" Editable="true" />
+        }
+        else if (typeof(T) == typeof(DateOnly) || typeof(T) == typeof(DateOnly?))
+        {
+            <MudDatePicker @bind-Date="_dateValue" Label="@Label" Editable="true" />
+        }
+        else if (typeof(T) == typeof(TimeOnly) || typeof(T) == typeof(TimeOnly?))
+        {
+            <MudTimePicker @bind-Time="_timeValue" Label="@Label" Editable="true" />
+        }
+        else if (typeof(T) == typeof(int) || typeof(T) == typeof(int?))
+        {
+            <MudNumericField @bind-Value="_intValue" Label="@Label" />
+        }
+        else if (typeof(T) == typeof(decimal) || typeof(T) == typeof(decimal?))
+        {
+            <MudNumericField @bind-Value="_decimalValue" Label="@Label" />
+        }
+        else if (typeof(T) == typeof(float) || typeof(T) == typeof(float?))
+        {
+            <MudNumericField @bind-Value="_floatValue" Label="@Label" />
+        }
+        else if (typeof(T) == typeof(double) || typeof(T) == typeof(double?))
+        {
+            <MudNumericField @bind-Value="_doubleValue" Label="@Label" Step="0.01" />
+        }
+        else if (typeof(T) == typeof(bool) || typeof(T) == typeof(bool?))
+        {
+            <MudSwitch @bind-Value="_boolValue"
+                       Color="Color.Primary"
+                       UncheckedColor="Color.Default"
+                       Label="@Label" />
+        }
+        else
+        {
+            <MudTextField @bind-Value="_stringValue" 
+                          Label="@Label" 
+                          Variant="Variant.Outlined" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Отмена</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Ok</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance? _mudDialog { get; set; }
+
+    [Parameter] public T? Item { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+
+    private DateTime? _dateValue = DateTime.UtcNow;
+    private TimeSpan? _timeValue;
+    private int? _intValue = 0;
+    private decimal? _decimalValue = 0;
+    private float? _floatValue = 0;
+    private double? _doubleValue = 0;
+    private bool? _boolValue;
+    private string _stringValue = "";
+
+    protected override void OnInitialized()
+    {
+        if (Item is DateTime dateTime)
+        {
+            if (dateTime == DateTime.MinValue)
+            {
+                _dateValue = DateTime.UtcNow;
+                _timeValue = DateTime.UtcNow.TimeOfDay;
+            }
+            else
+            {
+                _dateValue = dateTime;
+                _timeValue = dateTime.TimeOfDay;
+            }
+        }
+        else if (Item is DateOnly dateOnly)
+        {
+            if (dateOnly == DateOnly.MinValue)
+            {
+                _dateValue = DateTime.UtcNow;
+            }
+            else
+            {
+                _dateValue = dateOnly.ToDateTime(TimeOnly.MinValue);
+            }
+        }
+        else if (Item is TimeOnly timeOnly)
+        {
+            if (timeOnly == TimeOnly.MinValue)
+            {
+                _timeValue = TimeOnly.FromDateTime(DateTime.UtcNow).ToTimeSpan();
+            }
+            else
+            {
+                _timeValue = timeOnly.ToTimeSpan();
+            }
+        }
+        else if (Item is int intValue)
+        {
+            _intValue = intValue;
+        }
+        else if (Item is decimal decimalValue)
+        {
+            _decimalValue = decimalValue;
+        }
+        else if (Item is float floatValue)
+        {
+            _floatValue = floatValue;
+        }
+        else if (Item is double doubleValue)
+        {
+            _doubleValue = doubleValue;
+        }
+        else if (Item is bool boolValue)
+        {
+            _boolValue = boolValue;
+        }
+        else if (Item != null)
+        {
+            _stringValue = Item.ToString() ?? "";
+        }
+    }
+
+    private void Submit()
+    {
+        object? result = typeof(T) switch
+        {
+            { } t when t == typeof(DateTime) || t == typeof(DateTime?) => 
+                _dateValue.HasValue && _timeValue.HasValue 
+                    ? _dateValue.Value.Date + _timeValue.Value 
+                    : null,
+            { } t when t == typeof(DateOnly) || t == typeof(DateOnly?) => 
+                _dateValue.HasValue 
+                    ? DateOnly.FromDateTime(_dateValue.Value) 
+                    : null,
+            { } t when t == typeof(TimeOnly) || t == typeof(TimeOnly?) => 
+                _timeValue.HasValue 
+                    ? TimeOnly.FromTimeSpan(_timeValue.Value) 
+                    : null,
+            { } t when t == typeof(int) || t == typeof(int?) => _intValue,
+            { } t when t == typeof(decimal) || t == typeof(decimal?) => _decimalValue,
+            { } t when t == typeof(float) || t == typeof(float?) => _floatValue,
+            { } t when t == typeof(double) || t == typeof(double?) => _doubleValue,
+            { } t when t == typeof(bool) || t == typeof(bool?) => _boolValue,
+            _ => (T)Convert.ChangeType(_stringValue, typeof(T))
+        };
+
+        _mudDialog?.Close(DialogResult.Ok((T?)result));
+    }
+
+    private void Cancel()
+    {
+        _mudDialog?.Cancel();
+    }
+}

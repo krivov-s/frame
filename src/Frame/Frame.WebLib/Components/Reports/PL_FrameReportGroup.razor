@@ -1,0 +1,35 @@
+﻿@page "/frame_report_group_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Microsoft.AspNetCore.Components.Web
+@using Frame.Shared
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.Reports
+
+<PageTitle>Список групп отчётов</PageTitle>
+
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="FrameReportGroup"
+                    TParentComponent="PL_FrameReportGroup"
+                    Title="Список групп отчётов"
+                    ConfigureQuerySpecification="spec => spec 
+                        .Include(x => x.FrameReports)
+                        .ThenInclude(x => x.FrameReport)
+                        .Build()"
+                    EditMode="EntitiesListEditMode.FormContent">
+    <GridContent>
+        <PropertyColumn T="@FrameReportGroup" TProperty="@string" Property="x => x.Name" Title="@FrameReportGroup.Meta.Name.HumanName" Editable="true" Required="FrameReportGroup.Meta.Name.Required" />
+        <PropertyColumn T="@FrameReportGroup" TProperty="@string" Property="x => x.Description" Title="@FrameReportGroup.Meta.Descr.HumanName" Editable="true" Required="FrameReportGroup.Meta.Descr.Required" />
+        <PropertyColumn T="@FrameReportGroup" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <CF_FrameReportGroupReports FormObject="context"></CF_FrameReportGroupReports>
+    </FormContent>
+
+</EntitiesListDetail>
+
+@code {
+    
+}

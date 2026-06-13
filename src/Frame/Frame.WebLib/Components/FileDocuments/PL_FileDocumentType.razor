@@ -1,0 +1,40 @@
+﻿@page "/filedocument_type_list"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>Типы файл-документов</PageTitle>
+
+@* <MudPopoverProvider /> *@
+@* <MudDialogProvider Position="DialogPosition.TopLeft" /> *@
+<MudSnackbarProvider />
+
+<EntitiesListDetail TEntity="FileDocumentType"
+              TParentComponent="PL_FileDocumentType"
+              Title="Список типов файл-документов"
+              EditMode="EntitiesListEditMode.FormContent">
+
+    <GridContent>
+        <PropertyColumn T="@FileDocumentType" TProperty="@string" Property="x => x.Name" Title="@FileDocumentType.Meta.Name.HumanName"/>
+        <PropertyColumn T="@FileDocumentType" TProperty="@string" Property="x => x.PathToFolder" Title="@FileDocumentType.Meta.PathToFolder.HumanName"/>
+        <PropertyColumn T="@FileDocumentType" TProperty="@string" Property="x => x.Descr" Title="@FileDocumentType.Meta.Descr.HumanName"/>
+        <PropertyColumn T="@FileDocumentType" TProperty="@int" Property="x => x.Id" Title="Id" Editable="false" />
+    </GridContent>
+
+    <FormContent>
+        <SimpleEditForm TEntity="FileDocumentType"
+                        TParentComponent="CF_FileDocumentType"
+                        Entity="context">
+        </SimpleEditForm>
+@*         <CF_FileDocumentType FormObject="context"></CF_FileDocumentType> *@    
+    </FormContent>
+</EntitiesListDetail>
+
+@code {
+
+}
+
+@*               AddNewEntityUri="filedocument_type/0"
+              EditEntityUri="filedocument_type/{Entity.Id}"
+ *@

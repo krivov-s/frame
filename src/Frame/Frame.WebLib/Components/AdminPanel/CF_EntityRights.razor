@@ -1,0 +1,174 @@
+﻿@using Frame.Domain.Entities.Core.Security
+@using Frame.Domain.Entities.Metadata
+@using Microsoft.AspNetCore.Components.Web
+
+@*MaxWidth="MaxWidth.Large" FullWidth="true" LockScroll="false"*@
+
+<MudCard>
+    <MudCardHeader>
+        <MudText Typo="Typo.h6">Настройка прав доступа для объектов с типом @EntityRights?.EntityTypeName</MudText>
+    </MudCardHeader>
+    <MudDivider />
+    <MudCardContent>
+        <SimpleEditForm @ref="_simpleEditForm"
+                        TEntity="TEntityRights"
+                        TParentComponent="CF_EntityRights"
+                        Entity="EntityRights"
+                        ShowTitle="false">
+            @if (_simpleEditForm != null)
+            {
+                <MudGrid>
+                    <MudItem xs="12" sm="12">
+                        <MudSelect T="string" @bind-Value="EntityRights.EntityTypeName" Label="@TEntityRights.Meta.EntityTypeName.HumanName" class="ma-1" Variant="Variant.Outlined">
+                            @foreach (string entityType in EntityMetadata.GetAllEntitiesClassNames())
+                            {
+                                <MudSelectItem Value="@entityType">@entityType</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.ReadQueryFilter"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <MudCard Elevation="3" class="ma-1">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">Права на тип (Type Level Security)</MudText>
+                                    <MudText Typo="Typo.body1">
+                                        True, False, любое вычисляемое условие, не зависящее от читаемых данных, например: "appCore.CurrentUser.Login == "testuser2""
+                                    </MudText>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudStack Row="false">
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.ViewTLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.CreateTLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.ModifyTLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.CopyTLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.DeleteTLS"/>
+                                </MudStack>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <MudCard Elevation="3" class="ma-1">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">Права на объект (Object Level Security)</MudText>
+                                    <MudText Typo="Typo.body1">
+                                        True, False, любое вычисляемое условие, применяемое к конкретному объекту, например: "obj.TextAttr.Contains("Test")"
+                                    </MudText>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudStack Row="false">
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.ViewOLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.CreateOLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.ModifyOLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.CopyOLS"/>
+                                    <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.DeleteOLS"/>
+                                </MudStack>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <MudCard Elevation="3" class="ma-1">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Права на отдельные атрибуты (Attr Level Security)</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudGrid>
+                                    <MudItem xs="12" sm="8">
+                                        <FieldEditFactory TEntity="TEntityRights"
+                                                          Entity="EntityRights"
+                                                          MaxLines="3"
+                                                          AutoGrow="true"
+                                                          Field="@TEntityRights.Meta.ReadAttrs"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="2">
+                                        <FieldEditFactory TEntity="TEntityRights"
+                                                          Entity="EntityRights"
+                                                          Field="@TEntityRights.Meta.CanReadAttrs"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="2">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Default"
+                                                   OnClick="@_fillReadAttrs">Заполнить</MudButton>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="8">
+                                        <FieldEditFactory TEntity="TEntityRights"
+                                                          Entity="EntityRights"
+                                                          MaxLines="3"
+                                                          AutoGrow="true"
+                                                          Field="@TEntityRights.Meta.ModifyAttrs"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="2">
+                                        <FieldEditFactory TEntity="TEntityRights"
+                                                          Entity="EntityRights"
+                                                          Field="@TEntityRights.Meta.CanModifyAttrs"/>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="2">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Default"
+                                                   OnClick="@_fillModifyAttrs">Заполнить</MudButton>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="12">
+                        <MudCard Elevation="3" class="ma-1">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Права на интерфейс пользователя</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.Print"/>
+                                <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.PrintPreview"/>
+                                <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.SaveAsTemplate"/>
+                                <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.CreateFromTemplate"/>
+                                <FieldEditFactory TEntity="TEntityRights" Entity="EntityRights" Field="@TEntityRights.Meta.Export"/>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+            }
+        </SimpleEditForm>
+    </MudCardContent>
+</MudCard>
+
+@code {
+
+    [Parameter] public TEntityRights EntityRights { get; set; } = new();
+
+    private SimpleEditForm<TEntityRights, CF_EntityRights>? _simpleEditForm { get; set; }
+
+    private EntityMetaInfo? __entityMetaInfo = null;
+
+    private EntityMetaInfo? _entityMetaInfo
+    {
+        get
+        {
+            if (__entityMetaInfo != null) return __entityMetaInfo;
+
+            __entityMetaInfo = EntityMetadata.GetEntityMeta(EntityRights.EntityTypeName);
+            return __entityMetaInfo;
+        }
+    }
+
+    private void _fillReadAttrs(MouseEventArgs args)
+    {
+        EntityMetaInfo? metaInfo = _entityMetaInfo;
+        if(metaInfo == null) return;
+
+        EntityRights.ReadAttrs = string.Join(',', metaInfo.Fields.Select(f => f.FrameField.Name));
+        _simpleEditForm?.SetDataChanged();
+        StateHasChanged();
+    }
+    
+    private void _fillModifyAttrs(MouseEventArgs args)
+    {
+        EntityMetaInfo? metaInfo = _entityMetaInfo;
+        if(metaInfo == null) return;
+
+        EntityRights.ModifyAttrs = string.Join(',', metaInfo.Fields.Select(f => f.FrameField.Name));
+        _simpleEditForm?.SetDataChanged();
+        StateHasChanged();
+    }
+    
+}

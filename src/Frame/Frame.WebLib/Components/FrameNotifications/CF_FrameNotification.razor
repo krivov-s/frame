@@ -1,0 +1,86 @@
+﻿@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Blazor.AceEditorJs
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.FrameNotifications
+@using Frame.Domain.Entities.Core.Queries
+@using Frame.WebLib.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Frame.App.Security
+@using Frame.Shared
+@using Frame.Domain.Entities.Core.Security
+@using Frame.WebLib.Components.Shared.CodeEditor
+@using Frame.WebLib.Components.Params
+
+
+<MudCard>
+    @if (_isAuthorized)
+    {
+        <MudCardHeader>
+            <MudText Typo="Typo.h5">Уведомления</MudText>
+        </MudCardHeader>
+        <MudDivider />
+        <MudCardContent>
+            @if (_formObject != null)
+            {
+                <MudGrid>
+                    @* ========== Line 1 ========= *@
+                    <MudItem xs="12" sm="3">
+                        <MudText Typo="Typo.h6">Дата и время:</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="9">
+                        <MudTextField T="DateTime" @bind-Value="_formObject.DateCreate" ReadOnly="true" Format="dd.MM.yyyy hh:mm"/>
+                    </MudItem>
+                    @* ========== Line 2 ========= *@
+                    <MudItem xs="12" sm="3">
+                        <MudText Typo="Typo.h6">Тема:</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="9">
+                        <MudTextField T="string" @bind-Value="_formObject.Theme" ReadOnly="true" />
+                    </MudItem>
+                    @* ========== Line 3 ========= *@
+                    <MudItem xs="12" sm="12">
+                        <CodeEditor @bind-Value="_formObject.Message"
+                                    Language="@_language"
+                                    Theme="_theme"/>
+                    </MudItem>                    
+                    <MudItem xs="12" sm="12">
+                        <MudCheckBox @bind-value="_formObject.IsNew" Label="Прочитано" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudCardContent>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Ошибка авторизации!</MudAlert>
+    }
+</MudCard>
+
+@code {
+    [CascadingParameter] IObjectStorage? SharedObjectStorage { get; set; }
+    [CascadingParameter] CompositeFormState? _compositeFormState { get; set; }
+
+    [Parameter] public FrameNotification? FormObject { get; set; }
+
+    [Inject] private IGetCurrentUserNameService? _currentUserService { get; set; }
+    [Inject] IDialogService? _dialogService { get; set; }
+    [Inject] private ISnackbar? _snackBar { get; set; }
+    [Inject] private ILogger<CF_FrameNotification>? _logger { get; set; }
+
+    private FrameNotification? _formObject;
+    private bool _isAuthorized;
+    private AceTheme _theme { get; set; } = AceTheme.textmate;
+    private AceLanguage _language { get; set; } = AceLanguage.text;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthorized = await AuthHelpers.CheckAuthorized(_currentUserService, _logger, _snackBar);
+        _formObject = FormObject;
+        if (_formObject != null)
+            _language = (AceLanguage)_formObject.FormatCode;
+        base.OnInitialized();
+    }
+
+}

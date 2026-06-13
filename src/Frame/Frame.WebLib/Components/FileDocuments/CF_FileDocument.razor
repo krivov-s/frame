@@ -1,0 +1,297 @@
+﻿@rendermode @(new InteractiveServerRenderMode(false))
+
+@using Frame.App.FileRepositories
+@using Frame.App.IEntityRepositories
+@using Frame.Domain.Entities.Core.FileDocuments
+@using Frame.Shared
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+
+<SimpleEditForm @ref="_simpleEditForm"
+                TEntity="FileDocument"
+                TParentComponent="CF_FileDocument"
+                Entity="@_formObject"
+                ShowSaveAndCreateButton="false"
+                ShowCloseButton="@ShowCloseButton"
+                ShowSaveButton="true"
+                ShowTitle="false"
+                ConfigureQuerySpecification="x => x.Include(y => y.FileDocumentType).Build()"
+                EntityLoaded="(val, repository) => OnFileDocumentLoaded(val, repository)">
+    @if (_simpleEditForm != null && _formObject != null)
+    {
+        <MudGrid>
+            @if (_savingFileToStorage)
+            {
+                <MudItem xs="12" sm="3">
+                    <MudAlert Severity="Severity.Info">Идет сохранение файла в хранилище</MudAlert>
+                </MudItem>
+                <MudItem xs="12" sm="1">
+                    <MudProgressCircular Color="Color.Default" Indeterminate="true" />
+                </MudItem>
+                <MudItem xs="12" sm="8"></MudItem>
+            }
+            @if (_loadingFileFromStorage)
+            {
+                <MudItem xs="12" sm="3">
+                    <MudAlert Severity="Severity.Info">Идет чтение файла из хранилища</MudAlert>
+                </MudItem>
+                <MudItem xs="12" sm="1">
+                    <MudProgressCircular Color="Color.Default" Indeterminate="true" />
+                </MudItem>
+                <MudItem xs="12" sm="8"></MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.DocumentName"/>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <RefEditFactory TEntity="FileDocument"
+                                Entity="_formObject"
+                                Field="FileDocument.Meta.FileDocumentType"
+                                ValueChanged="_simpleEditForm.SetDataChanged"/>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.IsActual" Disabled="false"/>
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.FileKey" Disabled="true"/>
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-center justify-center">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileChangedAsync">
+                    <ActivatorContent>
+                        @{
+                            if (_canUpload)
+                            {
+                                string strTooltip = (_canUpload) ? "Нажмите для выбора файла и загрузки в хранилище"
+                                : "Для загрузки в хранилище необходимо сначала сохранить текущий документ";
+                                <MudTooltip Text="@strTooltip">
+                                    <MudButton Variant="Variant.Filled"
+                                    Color="Color.Primary"
+                                    StartIcon="@Icons.Material.Filled.CloudUpload">
+                                        Загрузить в хранилище
+                                    </MudButton>
+                                </MudTooltip>
+                            }
+                        }
+
+                    </ActivatorContent>
+                </MudFileUpload>
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-center justify-center">
+                @if (_formObject != null && _formObject.FileKey is { Length: > 0 })
+                {
+                    <MudButton Variant="Variant.Filled"
+                    Color="Color.Secondary"
+                    Disabled="!_canDownload"
+                    OnClick="DownloadFileAsync"
+                    StartIcon="@Icons.Material.Filled.CloudDownload">
+                        Скачать из хранилища
+                    </MudButton>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.FileName" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.OwnerKey" Disabled="OwnerKeyDisabled" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.UserTag" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.SystemTag" Disabled="true" />
+            </MudItem>
+            <MudItem xs="12" sm="12">
+                <FieldEditFactory TEntity="FileDocument" Entity="_formObject" Field="FileDocument.Meta.Comment" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    }
+</SimpleEditForm>
+
+<script>
+    window.downloadFileDirectly = async (url, fileName) => {
+        try
+        {
+            let response = await fetch(url);
+            if (!response.ok)
+            {
+                throw new Error(await response.text());
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+
+            window.URL.revokeObjectURL(downloadUrl);
+        }
+        catch (error)
+        {
+            console.error("Ошибка при скачивании файла:", error.message);
+            alert("Ошибка: " + error.message);
+        }
+    };
+</script>
+
+@code {
+    /// <summary>
+    /// Общее объектное хранилище, определенное родительской формой. Если задано - обязательно используется.
+    /// </summary>
+    [CascadingParameter] private IObjectStorage? _sharedObjectStorage { get; set; }
+
+    [Parameter] public FileDocument? Entity { get; set; }  //{ get => _formObject; set => _formObject = value; }
+
+    [Parameter] public string OwnerKey { get; set; } = "";
+    [Parameter] public bool OwnerKeyDisabled { get; set; } = true;
+    [Parameter] public bool ShowCloseButton { get; set; }
+    [Parameter] public string SystemTag { get; set; } = "";
+
+    [Inject] ILogger<CF_FileDocument>? _logger { get; set; }
+    [Inject] IFileDocumentService? _fileDocumentService { get; set; }
+    [Inject] IJSRuntime? _jsRuntime { get; set; }
+    [Inject] ISnackbar? _snackBar { get; set; }
+    [Inject] CoreWebSettings? _coreWebSettings { get; set; }
+
+    private SimpleEditForm<FileDocument, CF_FileDocument>? _simpleEditForm;
+    private IObjectStorage? _formStorage = null;
+
+    /// <summary>
+    /// Объектное хранилище, из которого будет считываться и записываться FileDocument.
+    /// Это либо хранилище из EntitiesListFormState или из CompositeFormState
+    /// </summary>
+    private IObjectStorage? _objectStorage
+    {
+        get
+        {
+            if (_formStorage == null)
+            {
+                if (_sharedObjectStorage != null)
+                {
+                    _formStorage = _sharedObjectStorage;
+                }
+            }
+            return _formStorage;
+        }
+    }
+
+    private FileDocument? _formObject = null;
+
+    private bool _savingFileToStorage = false;
+    private bool _loadingFileFromStorage = false;
+    private bool _canUpload
+    {
+        get
+        {
+            if (_formObject != null && _formObject.Id > 0)
+                return true;
+            else
+                return false;
+        }
+    }
+    private bool _canDownload
+    {
+        get
+        {
+            if (_formObject != null && _formObject.FileKey is { Length: > 0 })
+                return true;
+            else
+                return false;
+        }
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (Entity != null)
+        {
+            _formObject = Entity;
+
+            // Если в параметрах задан системный тег документа, а в объекте он не задан - устанавливаем его.
+            if (SystemTag != "" && _formObject.SystemTag == "")
+            {
+                _formObject.SystemTag = SystemTag;
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    private void OnFileDocumentLoaded(FileDocument fileDoc, IBaseRepository<FileDocument>? repository)
+    {
+        _formObject = fileDoc;
+
+        if (_formObject != null && _formObject.OwnerKey.Length == 0 && OwnerKey != null && OwnerKey.Length > 0)
+        {
+            _formObject.OwnerKey = OwnerKey;
+        }
+    }
+
+    private async Task OnFileChangedAsync(IBrowserFile? file)
+    {
+        if (file == null)
+        {
+            _snackBar?.Add($"Передан пустой указатель на файл!");
+            return;
+        }
+        
+        await UploadFileAsync(file);
+    }
+
+    private async Task UploadFileAsync(IBrowserFile? fileFromBrowser)
+    {
+        try
+        {
+            if (fileFromBrowser != null && _formObject != null && 
+                _simpleEditForm != null && _fileDocumentService != null &&
+                _sharedObjectStorage != null)
+            {
+                Result res;
+                _savingFileToStorage = true;
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    await using (Stream fileStream = fileFromBrowser.OpenReadStream(fileFromBrowser.Size))
+                    {
+                        await fileStream.CopyToAsync(ms);
+                    }
+                    ms.Position = 0;
+                    res = await _fileDocumentService.SaveFileToDocumentAsync(
+                        _formObject, ms, fileFromBrowser.Name, _sharedObjectStorage);
+                }
+
+                if (!res.IsError)
+                {
+                    _snackBar?.Add("Загрузка файла успешно завершена!", Severity.Success);
+                    _simpleEditForm.SetDataUnchanged();
+                    StateHasChanged();
+                }
+                else
+                {
+                    _snackBar?.Add(res.ErrorResult, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            string strError = $"Ошибка загрузки файла в хранилище: {ex.Message}";
+            _logger?.LogError(strError);
+            _snackBar?.Add(strError, Severity.Error);
+        }
+        finally
+        {
+            _savingFileToStorage = false;
+        }
+    }
+
+    private async Task DownloadFileAsync()
+    {
+        Result res = await Helpers.DownloadFileAsync(_jsRuntime, _formObject, _logger, _coreWebSettings);
+        if (res.IsError)
+        {
+            _snackBar?.Add(res.ErrorResult, Severity.Error);
+        }
+    }
+}

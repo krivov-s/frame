@@ -1,0 +1,40 @@
+﻿@page "/scriptcommand/{id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender:false))
+
+@using Frame.Domain.Entities.Core.Scripting
+@using Microsoft.AspNetCore.Components.Web
+
+@* <MudPopoverProvider /> *@
+<MudSnackbarProvider />
+
+<SimpleEditForm @ref="_form" TEntity="ScriptCommand" TParentComponent="ScriptCommandForm" Id="@Id">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="Параметры">
+            <FieldEditFactory TEntity="ScriptCommand" Entity="_form?.Entity" Field="ScriptCommand.Meta.ScriptName"></FieldEditFactory>
+            <FieldEditFactory TEntity="ScriptCommand" Entity="_form?.Entity" Field="ScriptCommand.Meta.CodeType"></FieldEditFactory>
+            <FieldEditFactory TEntity="ScriptCommand" Entity="_form?.Entity" Field="ScriptCommand.Meta.ThreadType" Lines="20"></FieldEditFactory>
+        </MudTabPanel>
+        <MudTabPanel Text="Код скрипта">
+            @if (_form != null && _form.Entity != null)
+            {
+                <MudTextField T="string"
+                              Variant="Variant.Outlined"
+                              Immediate="false"
+                              Disabled="false"
+                              ReadOnly="false"
+                              Label="@ScriptCommand.Meta.ScriptCode.HumanName"
+                              MaxLines="40"
+                              AutoGrow
+                              @bind-Value="_form.Entity.ScriptCode" />
+            }
+        </MudTabPanel>
+    </MudTabs>
+
+</SimpleEditForm>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    protected SimpleEditForm<ScriptCommand, ScriptCommandForm>? _form { get; set; }
+
+}
